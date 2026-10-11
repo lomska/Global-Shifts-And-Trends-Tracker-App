@@ -1,5 +1,7 @@
 # Global Shifts & Trends Tracker
 
+**Live app: [global-shifts-and-trends-tracker-app.streamlit.app](https://global-shifts-and-trends-tracker-app.streamlit.app/)**
+
 This app gathers a curated set of publicly available indicators, from fiscal figures to
 self-reported happiness, to show how the world and its countries have changed over recent decades.
 
