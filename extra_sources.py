@@ -33,9 +33,11 @@ import datetime as dt
 import io
 import logging
 import re
+import time
 import zipfile
 
 import pandas as pd
+import requests
 
 import country_dict as cd
 
@@ -213,11 +215,26 @@ def series_of(source: str) -> list[str]:
 # Shared helpers
 # --------------------------------------------------------------------------
 
-def _get(session, url, *, accept: str | None = None, **params):
+RETRY_STATUSES = {500, 502, 503, 504}  # server-side errors worth a second try
+RETRY_WAIT = 2  # seconds before the second attempt, doubled before each later one
+
+
+def _get(session, url, *, accept: str | None = None, timeout: float = TIMEOUT, attempts: int = 1, **params):
+    """One GET. With attempts > 1, a request that times out or gets a server error (RETRY_STATUSES)
+    is tried again after a short wait; any other failure (unreachable host, 403, 404) is raised at once."""
     headers = {**HEADERS, **({"Accept": accept} if accept else {})}
-    resp = session.get(url, params=params or None, headers=headers, timeout=TIMEOUT)
-    resp.raise_for_status()
-    return resp
+    for attempt in range(1, attempts + 1):
+        try:
+            resp = session.get(url, params=params or None, headers=headers, timeout=timeout)
+            resp.raise_for_status()
+            return resp
+        except (requests.exceptions.Timeout, requests.exceptions.HTTPError) as exc:
+            status = getattr(getattr(exc, "response", None), "status_code", None)
+            retryable = isinstance(exc, requests.exceptions.Timeout) or status in RETRY_STATUSES
+            if attempt == attempts or not retryable:
+                raise
+            log.warning("%s failed (%s), attempt %d of %d; retrying", url, type(exc).__name__, attempt, attempts)
+            time.sleep(RETRY_WAIT * 2 ** (attempt - 1))
 
 
 def _finish(long_df: pd.DataFrame) -> pd.DataFrame:
@@ -273,13 +290,19 @@ def _read_excel(content: bytes, **kwargs) -> pd.DataFrame | dict[str, pd.DataFra
 # --------------------------------------------------------------------------
 
 WDI_URL = "https://api.worldbank.org/v2/country/all/indicator/{code}"
+# The World Bank API now and then leaves a request hanging, and one failed series fails the whole
+# source (seen on Streamlit Community Cloud, 2026-10-11: a 180 s read timeout). A series normally
+# answers within seconds, so: give up on a request after WDI_TIMEOUT and try it again.
+WDI_TIMEOUT = 45
+WDI_ATTEMPTS = 3
 
 
 def _wdi_one(session, code: str) -> tuple[pd.DataFrame, dt.date | None]:
     """One series, plus the "lastupdated" date the API sends with it (the WDI database's last update)."""
     rows, page, pages, updated = [], 1, 1, None
     while page <= pages:
-        payload = _get(session, WDI_URL.format(code=code), format="json", per_page=20000, page=page,
+        payload = _get(session, WDI_URL.format(code=code), timeout=WDI_TIMEOUT, attempts=WDI_ATTEMPTS,
+                       format="json", per_page=20000, page=page,
                        date=f"{FIRST_YEAR}:{dt.date.today().year}").json()
         if not isinstance(payload, list) or len(payload) < 2:
             raise ValueError(f"unexpected WDI response for {code}: {str(payload)[:200]}")

@@ -10,6 +10,7 @@ The Economics/Other data sources (extra_sources.py, data_utils.load_extra_data):
 4. Release dates ("Last updated" under the Trends charts): a date that can't be read leaves the
    source loaded and its footer without the date; a cache written before the dates were kept is
    refetched once.
+5. A World Bank request that times out is tried again, so one slow series doesn't fail WDI.
 """
 import _pathfix  # noqa: F401
 import json
@@ -166,5 +167,41 @@ with patch.object(du._SESSION, "get", side_effect=counting_get):
 du.clear_disk_cache()
 st.cache_data.clear()
 print("OK: a cache without release dates self-heals on the next load")
+
+# --- 5. A timed-out WDI request is retried ---
+import requests  # noqa: E402
+
+timed_out = []
+
+
+def wdi_slow_once_get(url, params=None, timeout=None, **kwargs):
+    """Every WDI series times out on its first request, then answers."""
+    if "/indicator/" in url and url not in timed_out:
+        timed_out.append(url)
+        assert timeout == xs.WDI_TIMEOUT, timeout
+        raise requests.exceptions.ReadTimeout("simulated: read timed out")
+    return fake_get(url, params=params, timeout=timeout, **kwargs)
+
+
+def wdi_always_slow_get(url, params=None, timeout=None, **kwargs):
+    if "/indicator/" in url:
+        timed_out.append(url)
+        raise requests.exceptions.ReadTimeout("simulated: read timed out")
+    return fake_get(url, params=params, timeout=timeout, **kwargs)
+
+
+with patch.object(xs, "RETRY_WAIT", 0):
+    table, _ = xs.fetch_wdi(type("S", (), {"get": staticmethod(wdi_slow_once_get)}))
+    assert len(timed_out) == len(xs.WDI_SERIES), len(timed_out)  # each series failed once...
+    assert set(table["series_code"]) == set(xs.series_of("WDI"))  # ...and still loaded
+    timed_out.clear()
+    try:
+        xs.fetch_wdi(type("S", (), {"get": staticmethod(wdi_always_slow_get)}))
+        raise AssertionError("fetch_wdi should fail when the API never answers")
+    except requests.exceptions.ReadTimeout:
+        pass
+    # gives up after WDI_ATTEMPTS tries per series (other series may not have started)
+    assert max(timed_out.count(u) for u in set(timed_out)) == xs.WDI_ATTEMPTS
+print("OK: a timed-out World Bank request is retried, and gives up after WDI_ATTEMPTS")
 
 print("\nALL EXTRA SOURCE CHECKS PASSED")
