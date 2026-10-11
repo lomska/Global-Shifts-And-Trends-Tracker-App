@@ -5,6 +5,17 @@
 This app gathers a curated set of publicly available indicators, from fiscal figures to
 self-reported happiness, to show how the world and its countries have changed over recent decades.
 
+<table>
+<tr>
+<td width="50%" align="center"><b>Distribution in two years</b><br><img src="images/histogram.png" alt="Histogram: distribution of countries by birth rate, 1960 vs. 2024"></td>
+<td width="50%" align="center"><b>World map</b><br><img src="images/map.png" alt="World map: Economic Complexity Index, 2024"></td>
+</tr>
+<tr>
+<td width="50%" align="center"><b>Country details</b><br><img src="images/table.png" alt="Country Details table: each country's value in both years and the change between them"></td>
+<td width="50%" align="center"><b>Distribution by year</b><br><img src="images/boxplot.png" alt="Box plot per year: distribution of countries by internet users, 1990-2025"></td>
+</tr>
+</table>
+
 The app has two tabs:
 
 - **Period & Country Comparisons** (the landing tab) is the cross-country view of one indicator.
