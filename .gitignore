@@ -1,0 +1,19 @@
+__pycache__/
+*.pyc
+
+# On-disk data cache written at runtime by data_utils.py -- not something to commit,
+# it's regenerated automatically (and expires after 24h on its own).
+.wb_data_cache/
+
+# Local environment and Jupyter autosaves.
+.venv/
+.ipynb_checkpoints/
+
+# Local working notes for Claude Code sessions: not part of the published app.
+CLAUDE.md
+
+# Notebook-era data files, in case a local copy is still around: the first is 375 MB (over
+# GitHub's 100 MB file limit), the second holds data from sources that may not be redistributed
+# (DATA_SOURCES.md, "Not redistributed"). The app uses neither.
+1_wb_population.csv
+indicators_long_test.csv

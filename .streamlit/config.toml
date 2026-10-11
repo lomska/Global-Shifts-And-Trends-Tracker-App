@@ -1,0 +1,4 @@
+[theme]
+# OHA Denim (USAID Office of HIV/AIDS palette) for widgets: sliders, radio buttons, tabs.
+# Fonts stay Streamlit's own.
+primaryColor = "#2057a7"
