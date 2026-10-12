@@ -1,9 +1,9 @@
 """
 Data access layer for the Global Shifts & Trends Tracker app: loading, caching and the pandas
 transforms behind the charts. What each source is and how it's downloaded lives in sources.py; every
-source -- the World Bank's population data (source 40) included -- comes back as one long table
-(sources.SCHEMA), so the app works with one table, `data`, from load_data(). The country list
-(names, regions, income groups) is reference data rather than a source of series: load_countries().
+source comes back as one long table (sources.SCHEMA), so the app works with one table, `data`, 
+from load_data(). The country list (names, regions, income groups) is reference data rather 
+than a source of series: load_countries().
 
 Two layers of caching sit in front of the network:
   1. st.cache_data -- an in-memory cache for the lifetime of the running
