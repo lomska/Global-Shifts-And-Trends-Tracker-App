@@ -1,5 +1,5 @@
 """
-Data access layer for the Global Shifts & Trends Tracker app: loading, caching and the pandas
+Data access layer for the Global Shifts Tracker app: loading, caching and the pandas
 transforms behind the charts. What each source is and how it's downloaded lives in sources.py; every
 source comes back as one long table (sources.SCHEMA), so the app works with one table, `data`, 
 from load_data(). The country list (names, regions, income groups) is reference data rather 

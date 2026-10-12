@@ -1,4 +1,4 @@
-# Global Shifts & Trends Tracker
+# Global Shifts Tracker
 
 **Live app: [global-shifts-and-trends-tracker-app.streamlit.app](https://global-shifts-and-trends-tracker-app.streamlit.app/)**
 
