@@ -63,8 +63,7 @@ REGION_SHORT_LABEL: dict[str, str] = {
 
 
 # Round flags (512x512 SVG circles, the same size for every country) from the circle-flags set,
-# v2.8.0 (MIT, flags/LICENSE.md), kept in the repository so the app makes no request for them.
-# Images, not emoji: Windows doesn't render flag emoji.
+# v2.8.0 (MIT, flags/LICENSE.md).
 FLAGS_DIR = Path(__file__).with_name("flags")
 
 
@@ -77,8 +76,8 @@ def flag_file(iso2: str | None) -> Path | None:
     return path if path.is_file() else None
 
 
-# st.dataframe's ImageColumn has no size option: it scales every image to the cell's
-# height (row height minus vertical padding: 34px and 3px top/bottom in Streamlit 1.64).
+# st.dataframe's ImageColumn scales every image to the cell's height 
+# (row height minus vertical padding: 34px and 3px top/bottom in Streamlit 1.64).
 # To show a flag at FLAG_ROW_SHARE of the row height, pad the SVG's viewBox so the
 # circle fills only that share of the image.
 _GRID_ROW_PX, _GRID_CELL_PAD_PX = 34, 3
@@ -105,9 +104,9 @@ def flag_image(iso2: str | None, scale: float = _FLAG_SCALE) -> str | None:
 
 def region_pill_column(label: str = "Region"):
     """
-    Read-only column showing each region as a pill in its chart color (like the colored
-    Director tags in Streamlit's demo-movies app). Cells must be lists of short region
-    names; MultiselectColumn maps `color` onto `options` by position.
+    Read-only column showing each region as a pill in its chart color. 
+    Cells must be lists of short region names; MultiselectColumn maps `color` 
+    onto `options` by position.
     """
     return st.column_config.MultiselectColumn(
         label,
@@ -218,10 +217,8 @@ def add_split_line(
     legendgroup so the single legend entry toggles the whole series.
     The drawn pieces (solid, dotted, and a dotted bridge from the last observed to the first
     forecast point) don't answer hover. The tooltip comes from one invisible trace over all
-    the series' years, with " (forecast)" after the value in forecast years: with "x unified",
-    every trace answers with its nearest point, so separate hover traces for the observed and
-    forecast pieces both answered next to the split and the tooltip listed the series twice.
-    Being invisible, it also shows no line swatch in the tooltip (user, 2026-10-11).
+    the series' years, with " (forecast)" after the value in forecast years.
+    Being invisible, it also shows no line swatch in the tooltip.
     """
     hist, fcst = s[s.index < forecast_x], s[s.index >= forecast_x]
     fig.add_trace(go.Scatter(x=hist.index, y=hist, mode="lines", line=line, name=name,
@@ -783,7 +780,7 @@ def demographics_charts(t: pd.DataFrame, data: pd.DataFrame) -> list[dict]:
     def fmt(divisor):  # whole people when unscaled, else two decimals
         return ",.0f" if divisor == 1.0 else ",.2f"
 
-    c = du.CATEGORICAL_COLORS  # Denim, Golden Sand, Nero, Light Grey, Old Rose, Genoa, ...
+    c = du.CATEGORICAL_COLORS  # #2057a7, #f2bc40, #202020, #d3d3d3, #c43d4d, #287c6f, ...
     return [
         series_spec(trend_chart, {"Population": du.POP_TOTAL}, t, data, {},
                     "Total population", pop_unit, y_format=fmt(pop_div), hline_zero=True),
@@ -834,7 +831,7 @@ SECTOR_COLORS = {"Agriculture": du.CATEGORICAL_COLORS[1], "Industry": du.CATEGOR
 
 
 def economics_charts(t: pd.DataFrame, data: pd.DataFrame) -> list[dict]:
-    """Five rows, as the user set on 2026-09-30: the headline trio
+    """Five rows: the headline trio
     (growth, prices, unemployment); the fiscal block (revenue and expenditure -> balance -> debt:
     the balance is revenue minus expenditure, and deficits build up the debt); the external block;
     investment and finance; then size and structure (GDP is a size measure, not a headline trend)."""
@@ -888,9 +885,9 @@ def economics_charts(t: pd.DataFrame, data: pd.DataFrame) -> list[dict]:
         [
             series_spec(trend_chart, {"GDP": "WB:NY.GDP.MKTP.PP.KD"}, t, data, {},
                         "GDP, PPP", gdp_unit, y_format=gdp_format, hline_zero=True),
-            # Two charts side by side, not one per sector (user's decision, 2026-09-29): the gap between
+            # Two charts side by side, not one per sector: the gap between
             # agriculture's share of jobs and of output is the story. Lines,
-            # not stacked bars, on a shared y-axis (user's decision, 2026-09-30).
+            # not stacked bars, on a shared y-axis.
             series_spec(trend_chart, {"Agriculture": "WB:NV.AGR.TOTL.ZS", "Industry": "WB:NV.IND.TOTL.ZS",
                                            "Services": "WB:NV.SRV.TOTL.ZS"}, t, data, SECTOR_COLORS,
                         "Output by sector", "value added, % of GDP", **sector),
@@ -904,8 +901,8 @@ def economics_charts(t: pd.DataFrame, data: pd.DataFrame) -> list[dict]:
 def labour_charts(t: pd.DataFrame, data: pd.DataFrame) -> list[dict]:
     """Who takes part in the labour market, which young people are left out, and what share of
     national income goes to workers (one row). All ILO modelled.
-    Each chart's y-axis runs from 0 to the highest value any country reaches (user's decision,
-    2026-09-30), so it is the same whichever country is selected, without a 0-100 scale's empty top."""
+    Each chart's y-axis runs from 0 to the highest value any country reaches, so it is the same
+    whichever country is selected, without a 0-100 scale's empty top."""
     def pct(code):
         top = (global_extent(data, [code]) or (0, 100))[1]
         return dict(y_suffix="%", y_format=",.1f", hline_zero=True, y_extent=(0, top))
@@ -922,7 +919,7 @@ def labour_charts(t: pd.DataFrame, data: pd.DataFrame) -> list[dict]:
 def industry_charts(t: pd.DataFrame, data: pd.DataFrame) -> list[dict]:
     """How much a country makes, how advanced it is, how much of what it sells abroad is
     manufactured, its overall productive know-how, and investment in new technology (SDG 9.2.1,
-    9.b.1 and 9.5.1; order set by the user on 2026-09-29)."""
+    9.b.1 and 9.5.1)."""
     pct = dict(y_suffix="%", y_format=",.1f", hline_zero=True)
     # ECI is standardised every year (world mean 0, roughly -2.5 to +2.5):
     # one fixed scale for every country, widened only for outliers.
@@ -944,11 +941,11 @@ def industry_charts(t: pd.DataFrame, data: pd.DataFrame) -> list[dict]:
 
 
 def climate_charts(t: pd.DataFrame, data: pd.DataFrame) -> list[dict]:
-    # ND-GAIN: y-axis from the lowest to the highest value of any country (user's decision, 2026-09-30):
+    # ND-GAIN: y-axis from the lowest to the highest value of any country:
     # 50 / 0.5 is not a meaningful midpoint for these scores, which mostly fall between ~30 and ~75.
     c = du.CATEGORICAL_COLORS
     return [
-        # Section story (user's decision, 2026-09-30): emissions (per person, then total) -> how much
+        # Section story: emissions (per person, then total) -> how much
         # energy the economy uses -> how clean that energy is -> the land side -> climate risk.
         series_spec(trend_chart, {"GHG per capita": "WB:EN.GHG.ALL.PC.CE.AR5"}, t, data, {},
                     "Greenhouse gas emissions per capita", "tonnes of CO₂-equivalent, excl. land use",
@@ -985,7 +982,7 @@ def index_extent(t: pd.DataFrame, codes: list[str]) -> tuple[float, float] | Non
 
 def infrastructure_charts(t: pd.DataFrame, data: pd.DataFrame) -> list[dict]:
     """Access to the internet and to basic services (all WDI; the services are modelled from
-    household surveys, see ds.ESTIMATE_NOTES). Fixed 0-100% axes (user's decision, 2026-09-30): the
+    household surveys, see ds.ESTIMATE_NOTES). Fixed 0-100% axes: the
     question is how close a country is to universal access, which a data-fitted axis would hide."""
     c = du.CATEGORICAL_COLORS
     pct = dict(y_suffix="%", y_format=",.1f", hline_zero=True, y_extent=(0, 100))
@@ -1344,10 +1341,7 @@ CLIMATE_DISTRIBUTIONS: dict[str, dict] = {
 
 
 # Series charted in Trends but deliberately not in Distributions: the sector shares
-# left to the single-country charts. (The official exchange rate was
-# removed from the app on 2026-09-29, user's decision: its levels aren't comparable across countries;
-# the price level relative to the US covers the cross-country view.) Net migration counts too:
-# Distributions compares countries by the net migration rate (du.NET_MIGRATION_RATE) instead.
+# left to the single-country charts. 
 TRENDS_ONLY_SERIES = {"WB:SL.IND.EMPL.ZS", "WB:NV.SRV.TOTL.ZS", "WB:SL.SRV.EMPL.ZS", du.NET_MIGRATION}
 
 # Same sections, in the same order, as the Trends tab.
@@ -1617,9 +1611,9 @@ def distribution_boxes(stats: pd.DataFrame, outliers: pd.DataFrame, label: str, 
                        log: bool, fmt: str, suffix: str = "", fit: bool = False, show_mean: bool = True
                        ) -> go.Figure:
     """
-    One box per year from yearly_box_stats: Denim boxes (Plotly's precomputed q1 / median / q3 /
+    One box per year from yearly_box_stats: #2057a7 boxes (Plotly's precomputed q1 / median / q3 /
     fences, so the browser gets one row per year, not every country's value), outlier dots, and the
-    median (Denim) and mean (Old Rose) as 2px segments of their own (a box's own median takes its
+    median (#2057a7) and mean (#c43d4d) as 2px segments of their own (a box's own median takes its
     outline's colour and width; Plotly's boxmean is dashed). Forecast years (> split) are lighter.
     A fixed number of traces whatever the number of years: per group (observed / forecast) one box
     trace, one outlier trace, one median and one mean trace (None-separated segments), then one
@@ -1711,7 +1705,7 @@ def _even_scale(colors: list[str]) -> list[list]:
     return [[i / (len(colors) - 1), c] for i, c in enumerate(colors)]
 
 
-# Choropleths use the Denims sequential ramp; values on both sides of 0 the
+# Choropleths use the blue sequential ramp (#bfddff to #032461); values on both sides of 0 the
 # diverging palette (gold negative, blue positive).
 BLUE_SCALE, DIVERGING_SCALE = _even_scale(du.SEQUENTIAL_RAMP), _even_scale(du.DIVERGING)
 MAP_HEIGHT, MAP_MARGIN_TOP = 510, 90
@@ -1776,7 +1770,7 @@ def _style_map(fig: go.Figure, title: str, subtitle: str) -> go.Figure:
     """Bold headline-case title and italic gray subtitle (the unit), left-aligned as on the charts.
     Countries without data stay light gray."""
     fig.update_geos(projection_type="natural earth", showcountries=True, countrycolor="white",
-                    showland=True, landcolor=du.WHISPER, showocean=False,  # the palette's lightest gray
+                    showland=True, landcolor=du.WHISPER, showocean=False,  # #ebebeb
                     showframe=False, coastlinecolor="white", lataxis_range=[-58, 85])  # crop Antarctica
     fig.update_layout(
         title=dict(text=trend_title(title, subtitle, subtitle_px=16), font=dict(family=FONT, size=20, color="black"),
@@ -1953,8 +1947,8 @@ def html_title(title: str, subtitle: str):
 
 
 def section_break(name: str, pad_top: str = "0.5rem"):
-    """A quiet section break on the Distributions tab: the name in small, light Suva Grey, then a
-    1px Light Grey rule filling the rest of the line (user, 2026-10-11). Not an <h3>: main() restyles
+    """A quiet section break on the Distributions tab: the name in small, light gray (#909090), then a
+    1px #d3d3d3 rule filling the rest of the line. Not an <h3>: main() restyles
     those, and these stay lighter than the Trends section headers. The name never wraps or shrinks;
     on a narrow screen only the rule gives way. pad_top: the space above it (more after a chart or table)."""
     st.markdown(
@@ -1968,7 +1962,7 @@ def section_break(name: str, pad_top: str = "0.5rem"):
 
 
 # The tab's initial view (section, indicator): the first of these whose series has country data,
-# in the order set by the user (2026-10-10), one per source: IMF, the population data, ILOSTAT,
+# in this order, one per source: IMF, the population data, ILOSTAT,
 # SWIID, ND-GAIN, UNDP, Harvard Atlas, World Happiness Report. With none, the first one.
 DEFAULT_DIST_VIEWS: list[tuple[str, str]] = [
     ("Economics", "Real GDP growth"),
@@ -2161,9 +2155,9 @@ def tab_distributions(data: pd.DataFrame, countries: pd.DataFrame, errors: dict[
     if stats.empty:
         return  # no box plot, so no header over nothing
     section_break("Global Distribution Shift By Year", pad_top="1.25rem")
-    # Two-button toggles (user, 2026-10-11). Per-indicator keys: a widget not rendered in a run
+    # Two-button toggles. Per-indicator keys: a widget not rendered in a run
     # loses its state, so switching the indicator (or the group) and back puts both on their
-    # defaults again (user, 2026-10-11).
+    # defaults again.
     fit_col, mean_col, _ = st.columns([2, 1, 3])
     fit = fit_col.segmented_control("Fit axis to whiskers (hides extreme values)", ["Yes", "No"], default="No",
                                     required=True, key=f"dist_box_fit_{label}") == "Yes"
@@ -2192,7 +2186,7 @@ def load_source_updates() -> dict[str, dt.date | None]:
 
 
 def main():
-    # Section headers (st.subheader, the app's only <h3>) in the caption gray, Suva Grey.
+    # Section headers (st.subheader, the app's only <h3>) in the caption gray, #909090.
     # Streamlit's own text colors (":gray[...]") aren't palette colors, hence the CSS.
     st.markdown(f"<style>h3 {{ color: {du.SUVA_GREY} !important; }}</style>", unsafe_allow_html=True)
     st.title(APP_NAME)
@@ -2233,7 +2227,7 @@ def main():
     stop_if_nothing_loaded(errors, data)
     countries_warning(errors, countries)
 
-    # Distributions first, so the app opens on it (user, 2026-10-11). Each tab is an st.fragment:
+    # Distributions first, so the app opens on it. Each tab is an st.fragment:
     # a full run (page load, "Refresh data") still builds both, since st.tabs isn't lazy.
     dist_tab, trends_tab = st.tabs(["Period & Country Comparisons", "Country Profiles"])
     with dist_tab:

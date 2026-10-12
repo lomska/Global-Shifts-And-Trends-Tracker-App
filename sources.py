@@ -123,7 +123,7 @@ WDI_SERIES = {
     # Not Our World in Data's GHG columns: one leaves agriculture out
     # (a near-duplicate of CO2), the other includes volatile deforestation.
     "EN.GHG.ALL.PC.CE.AR5": "Total greenhouse gas emissions excl. LULUCF per capita (t CO2e/capita)",
-    # Added 2026-09-30 (user's decision): total emissions (who drives the
+    # Added 2026-09-30: total emissions (who drives the
     # global total; size-driven, so log-scaled maps), the renewable share (SDG 7.2.1: how clean the
     # energy is) and forest cover (SDG 15.1.1: the land side, which the GHG series leave out).
     "EN.GHG.ALL.MT.CE.AR5": "Total greenhouse gas emissions excl. LULUCF (Mt CO2e)",

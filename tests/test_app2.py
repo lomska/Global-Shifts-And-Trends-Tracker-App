@@ -603,7 +603,7 @@ def run():
         print("OK: every source")
 
         # Reference marks: each on its Trends chart (if it has one) and its Distributions histogram,
-        # labelled; education's is a band from 4 to 6. Out-of-pocket spending and elderly share have none (user).
+        # labelled; education's is a band from 4 to 6. Out-of-pocket spending and elderly share have none.
         def marks(fig):
             """(lines, bands, annotation texts) of a figure's reference shapes."""
             lines = [s for s in fig.layout.shapes if s.type == "line" and s.line.dash in ("dash", "dot")]
@@ -749,7 +749,7 @@ def run():
         # "Last updated" on every Trends footer: population charts and every other source's.
         trend_footers = [m.value for m in at.tabs[1].markdown if "Source:" in m.value]
         assert all("· Last updated " in f for f in trend_footers), [f for f in trend_footers if "Last updated" not in f]
-        # The Observed/Forecast legend explains the dotted lines: no footer repeats it (user, 2026-10-11).
+        # The Observed/Forecast legend explains the dotted lines: no footer repeats it.
         assert not any("dotted" in f for f in trend_footers), [f for f in trend_footers if "dotted" in f]
         for expected in ["Source: World Bank, Population estimates and projections · Last updated Jul-2026",
                          "Source: World Bank, World Development Indicators · Last updated Sep-2026",
@@ -772,7 +772,7 @@ def run():
         assert "Happiness: life evaluation" in infos[2] and "Median income" in infos[2], infos[2]
         assert infos[3].startswith("5 of 7 indicators have data for World.") and "ND-GAIN country index" in infos[3]
         assert infos[4].startswith("2 of 3 indicators have data for World.") and "years of schooling" in infos[4]
-        # Economics in the five rows the user set (2026-09-30); row 4 has two charts.
+        # Economics in its five fixed rows; row 4 has two charts.
         specs = app_mod.economics_charts(du.trends_data(data, "WLD"), data)
         rows = [[s["title"] for s in specs if s["row"] == n] for n in range(max(s["row"] for s in specs) + 1)]
         assert rows == [["Real GDP growth", "Consumer prices", "Unemployment rate"],

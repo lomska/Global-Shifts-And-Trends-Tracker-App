@@ -1,4 +1,4 @@
 [theme]
-# Denim (data_utils.DENIM, the app's primary color) for widgets: sliders, radio buttons, tabs.
+# #2057a7 (the app's primary color) for widgets: sliders, radio buttons, tabs.
 # Fonts stay Streamlit's own.
 primaryColor = "#2057a7"

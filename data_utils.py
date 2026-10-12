@@ -100,7 +100,7 @@ INCOME_CODES: dict[str, str] = {
     "LIC": "Low income",
 }
 
-# Colors: Denim and Golden Sand are the two primary colors (first and second series), with a set
+# Colors: #2057a7 (blue) and #f2bc40 (yellow) are the two primary colors (first and second series), with a set
 # of grays for gridlines, captions and text; chart style: app.style_fig.
 DENIM, SCOOTER, OLD_ROSE, GOLDEN_SAND = "#2057a7", "#1e87a5", "#c43d4d", "#f2bc40"
 MOODY_BLUE, GENOA, BURNT_SIENNA, TROLLEY_GREY = "#8980cb", "#287c6f", "#e07653", "#808080"
@@ -109,17 +109,17 @@ BLACK = "#000000"
 WHISPER, LIGHT_GREY, SUVA_GREY, MATTERHORN, NERO = "#ebebeb", "#d3d3d3", "#909090", "#505050", "#202020"
 # Categorical series, in order: blue, yellow, black, gray, red, green, dark gray, orange.
 CATEGORICAL_COLORS = [DENIM, GOLDEN_SAND, NERO, LIGHT_GREY, OLD_ROSE, GENOA, MATTERHORN, BURNT_SIENNA]
-# Maps: a "Denims" sequential ramp (light to dark), and a yellow-to-blue diverging palette from
-# the "Golden Sands" (negative, dark to light) through a neutral near-white at 0 into the Denims
-# (positive, light to dark). The neutral midpoint keeps values near 0 from blending into a muddy gray.
+# Maps: a blue sequential ramp (#bfddff to #032461, light to dark), and a yellow-to-blue diverging
+# palette from the yellows (negative, #735000 to #ffeb6e, dark to light) through a neutral near-white
+# (#f5f5f5) at 0 into the blues (positive, light to dark). The neutral midpoint keeps values near 0 from blending into a muddy gray.
 SEQUENTIAL_RAMP = ["#bfddff", "#a7c4fd", "#8aadfe", "#7397ef", "#5784d4", "#456ebe", "#215dad", "#064896",
                    "#02397d", "#032461"]
 DIVERGING = ["#735000", "#a27601", "#d29f1f", "#fbcf4f", "#ffeb6e", "#f5f5f5",
              "#bfddff", "#8aadfe", "#5784d4", "#215dad", "#02397d"]
 GRID_COLOR = LIGHT_GREY  # horizontal gridlines only
 
-# Distributions table region labels: four palette colors other than the two primary ones (Denim,
-# Golden Sand), then three grays. Region order is the World Bank's (alphabetical), so each
+# Distributions table region labels: four palette colors other than the two primary ones (#2057a7,
+# #f2bc40), then three grays. Region order is the World Bank's (alphabetical), so each
 # region keeps its color.
 REGION_COLORS = [SCOOTER, MOODY_BLUE, GENOA, OLD_ROSE, LIGHT_GREY, SUVA_GREY, MATTERHORN]
 REGION_COLOR_MAP: dict[str, str] = dict(zip(REGION_CODES.values(), REGION_COLORS))
@@ -132,8 +132,8 @@ REF_BAND_COLOR, REF_BAND_OPACITY = LIGHT_GREY, 0.45
 ZERO_LINE_COLOR = BLACK  # y = 0 lines: solid black (app.style_fig + add_hline)
 # Distributions table change arrows: direction only, in colors with no good/bad reading
 # (a rising death rate isn't "green"): the diverging palette's blue up and gold down, gray for
-# no change. Denim reads well as text on white; Golden Sand doesn't, so the down arrow takes a
-# darker step of the Golden Sands ramp (WCAG AA contrast).
+# no change. #2057a7 reads well as text on white; #f2bc40 doesn't, so the down arrow takes a
+# darker step of the yellow ramp, #8a5f00 (WCAG AA contrast).
 CHANGE_UP_COLOR, CHANGE_DOWN_COLOR, NO_CHANGE_COLOR = DENIM, "#8a5f00", TROLLEY_GREY
 REPLACEMENT_LEVEL = 2.1  # births per woman
 # Reference marks: drawn on the Trends chart and the
