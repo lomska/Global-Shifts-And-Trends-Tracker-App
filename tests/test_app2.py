@@ -166,6 +166,7 @@ def fake_get(url, params=None, timeout=None, **kwargs):
 import datetime as dt  # noqa: E402
 import functools  # noqa: E402
 import io  # noqa: E402
+import json  # noqa: E402
 import math  # noqa: E402
 import zipfile  # noqa: E402
 
@@ -695,12 +696,16 @@ def run():
         assert intro.startswith("This app gathers a curated set of publicly available indicators"), intro
         about = [c.value for c in at.sidebar.caption]
         assert len(about) == 3 and about[1].startswith("**Country Profiles** follows a single country"), about
-        # The three section breaks on the Distributions tab, in order, light (not <h3>) headings.
-        breaks = [m.value for m in at.tabs[0].markdown if 'role="heading"' in m.value]
-        names = ["Global Distribution Comparison Between Years", "Country-Level Insights",
-                 "Global Distribution Shift By Year"]
-        assert len(breaks) == 3 and all(n in b for n, b in zip(names, breaks)), breaks
-        assert not any("<h3" in b for b in breaks), breaks
+        # No section breaks on the Distributions tab; its four blocks (histogram, map, Country Details,
+        # box plot) are each headed by html_title(), in that order, above any toggles.
+        assert not any('role="heading"' in m.value for m in at.tabs[0].markdown)
+        titles = [m.value for m in at.tabs[0].markdown if "font-size:20px;font-weight:700" in m.value]
+        heads = ["Distribution of Countries by Real GDP Growth, ", "Real GDP Growth, ", "Country Details",
+                 "Distribution of Countries by Real GDP Growth, "]
+        assert len(titles) == 4 and all(f">{h}" in t for h, t in zip(heads, titles)), titles
+        assert " vs. " in titles[0] and "–" in titles[3], titles
+        assert all(not el.proto.spec or not json.loads(el.proto.spec)["layout"].get("title", {}).get("text")
+                   for el in at.tabs[0].get("plotly_chart")), "a Distributions figure still has its own title"
 
         assert [t.value for t in at.title] == [app_mod.APP_NAME], [t.value for t in at.title]
         # Distributions opens on Economics / Real GDP growth (the first DEFAULT_DIST_VIEWS entry).

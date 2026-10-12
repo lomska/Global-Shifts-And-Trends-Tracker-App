@@ -1408,9 +1408,20 @@ def distribution_counts(values: pd.DataFrame, bins: tuple) -> pd.DataFrame:
 
 
 DIST_BAR_OPACITY = 0.6  # the two years' bars overlap, so both stay see-through
-DIST_CHART_HEIGHT = 470
-DIST_MARGIN_TOP = 110  # 20px title, 16px italic gray subtitle, 14px legend row
-FULL_WIDTH_TITLE_TOP = 24  # px from the top to a 20px title (Plotly clips it at 14)
+# The Distributions charts' titles are drawn above each figure by html_title() (so a chart's
+# toggles can sit between its title and the plot); the figures only reserve their legend row.
+DIST_CHART_HEIGHT = 400
+DIST_MARGIN_TOP = 40  # the 14px legend row
+
+
+def dist_bars_title(label: str, year_a: int, year_b: int) -> tuple[str, str]:
+    """(title, subtitle) over the histogram, for html_title()."""
+    return f"Distribution of countries by {label}, {year_a} vs. {year_b}", "Number of countries"
+
+
+def dist_boxes_title(label: str, first: int, last: int, unit: str, log: bool) -> tuple[str, str]:
+    """(title, subtitle) over the box plot per year, for html_title()."""
+    return f"Distribution of countries by {label}, {first}–{last}", unit + (", log scale" if log else "")
 
 
 def zero_line_x(dist: pd.DataFrame, bins: tuple) -> float | None:
@@ -1478,9 +1489,9 @@ def distribution_bars(dist: pd.DataFrame, bins: tuple, label: str, year_a: int, 
                       x_suffix: str = "", vlines: list | None = None, band: tuple | None = None) -> go.Figure:
     """
     Two overlaid bar sets; the tooltip is headed by the bin as an interval (e.g. "[2.1, 2.2)",
-    see bin_intervals), then one row per year. Title, "Number of countries" subtitle and the
-    two years' legend laid out like the Trends charts (place_title_and_legend), at full-width
-    sizes. A solid zero line where zero_line_x() finds one. The unit
+    see bin_intervals), then one row per year. No title of its own (dist_bars_title, drawn above
+    the figure by html_title); the two years' legend is a row above the plot. A solid zero line
+    where zero_line_x() finds one. The unit
     is the x-axis title, so tick labels carry no suffix (x_suffix is for the tooltip only).
     Equal-width bins are a histogram of a continuous value, so they almost touch; fixed-edge
     bins are categories, with bars about twice as wide as the gaps.
@@ -1527,9 +1538,7 @@ def distribution_bars(dist: pd.DataFrame, bins: tuple, label: str, year_a: int, 
     if zero_x is not None:
         fig.add_vline(x=pos(zero_x), line_width=1, line_color=du.ZERO_LINE_COLOR)
 
-    title = trend_title(f"Distribution of countries by {html.escape(label)}, {year_a} vs. {year_b}",
-                        "Number of countries", subtitle_px=16)
-    fig = style_fig(fig, title=title, y_title="", x_title=x_title, height=DIST_CHART_HEIGHT)
+    fig = style_fig(fig, title="", y_title="", x_title=x_title, height=DIST_CHART_HEIGHT)
     fig.update_xaxes(type="category")
     if numeric:
         ticks = _edge_ticks(left, left + width * len(dist), width)
@@ -1539,11 +1548,11 @@ def distribution_bars(dist: pd.DataFrame, bins: tuple, label: str, year_a: int, 
         # (plotly >= 6.3) heads it with the category, i.e. the interval, instead.
         fig.update_xaxes(tickmode="array", tickvals=x, ticktext=dist["label"].tolist(),
                          unifiedhovertitle_text="%{x}")
-    place_title_and_legend(fig, DIST_CHART_HEIGHT, DIST_MARGIN_TOP, 20, top_px=FULL_WIDTH_TITLE_TOP)
+    fig.update_layout(margin_t=DIST_MARGIN_TOP)
     return fig
 
 
-# --- Box plot per year (under the "Global Distribution Shift By Year" section break) ---
+# --- Box plot per year (the last block on the Distributions tab) ---
 # Quartiles (boxes and tooltip alike): pandas' default linear interpolation, i.e. numpy's "linear"
 # method (Hyndman & Fan type 7). Whiskers reach the furthest value within 1.5 IQR of the box.
 BOX_WIDTH = 0.7  # of a year
@@ -1619,7 +1628,8 @@ def distribution_boxes(stats: pd.DataFrame, outliers: pd.DataFrame, label: str, 
     trace, one outlier trace, one median and one mean trace (None-separated segments), then one
     invisible hover trace over all years (one tooltip per year, also at the split) and the legend
     keys. fit: y-range from the lowest to the highest whisker end (+ padding), so extreme dots fall
-    off. log: a log y-axis, ticks at powers of ten.
+    off. log: a log y-axis, ticks at powers of ten. No title of its own (dist_boxes_title, drawn
+    above the figure and its toggles by html_title).
     """
     years = stats.index.to_numpy()
     forecast = years > split
@@ -1678,9 +1688,7 @@ def distribution_boxes(stats: pd.DataFrame, outliers: pd.DataFrame, label: str, 
         key("Mean", "mean", mode="lines", line=dict(color=du.OLD_ROSE, width=2))
 
     first, last = int(years[0]), int(years[-1])
-    title = trend_title(f"Distribution of countries by {html.escape(label)}, {first}–{last}",
-                        unit + (", log scale" if log else ""), subtitle_px=16)
-    fig = style_fig(fig, title=title, y_title="", height=DIST_CHART_HEIGHT)
+    fig = style_fig(fig, title="", y_title="", height=DIST_CHART_HEIGHT)
     fig.update_layout(boxmode="overlay")
     fig.update_xaxes(range=[first - 1, last + 1], tickmode="linear", tick0=0,
                      dtick=10 if len(years) > 40 else 5, hoverformat="d")
@@ -1697,7 +1705,7 @@ def distribution_boxes(stats: pd.DataFrame, outliers: pd.DataFrame, label: str, 
     elif fit:
         pad = BOX_FIT_PAD * (hi - lo) or BOX_FIT_PAD * max(abs(hi), 1)
         fig.update_yaxes(range=[lo - pad, hi + pad])
-    place_title_and_legend(fig, DIST_CHART_HEIGHT, DIST_MARGIN_TOP, 20, top_px=FULL_WIDTH_TITLE_TOP)
+    fig.update_layout(margin_t=DIST_MARGIN_TOP)
     return fig
 
 
@@ -1708,16 +1716,16 @@ def _even_scale(colors: list[str]) -> list[list]:
 # Choropleths use the blue sequential ramp (#bfddff to #032461); values on both sides of 0 the
 # diverging palette (gold negative, blue positive).
 BLUE_SCALE, DIVERGING_SCALE = _even_scale(du.SEQUENTIAL_RAMP), _even_scale(du.DIVERGING)
-MAP_HEIGHT, MAP_MARGIN_TOP = 510, 90
+MAP_HEIGHT, MAP_MARGIN_TOP = 430, 10  # the title is above the figure (html_title)
 
 
-def indicator_choropleth(values: pd.Series, names: pd.Series, spec: dict, *, title: str, subtitle: str,
+def indicator_choropleth(values: pd.Series, names: pd.Series, spec: dict, *,
                          z_range: tuple[float, float]) -> go.Figure:
     """
     World map of one year's values (index = ISO3 country_code); z_range is (min, max) of the
     values the color scale spans. Diverging scales (zero_mid, signed_log) are symmetric around 0,
     so zero is always their center: Plotly ignores zmid once zmin/zmax are set. The unit is the
-    subtitle, so the color bar's labels carry no suffix.
+    subtitle (html_title, above the map), so the color bar's labels carry no suffix.
     """
     v = values.dropna()
     scale = spec.get("map_scale")
@@ -1753,7 +1761,7 @@ def indicator_choropleth(values: pd.Series, names: pd.Series, spec: dict, *, tit
         text=names.reindex(v.index), customdata=v.values,
         hovertemplate=f"%{{text}}: <b>%{{customdata:{spec['fmt']}}}{spec.get('suffix', '')}</b><extra></extra>",
     ))
-    return _style_map(fig, title, subtitle)
+    return _style_map(fig)
 
 
 def _signed_log_z(v: pd.Series, max_abs: float):
@@ -1766,25 +1774,20 @@ def _signed_log_z(v: pd.Series, max_abs: float):
     return _slog(v), (-m, m, 0.0), dict(tickvals=ticks, ticktext=ticktext)
 
 
-def _style_map(fig: go.Figure, title: str, subtitle: str) -> go.Figure:
-    """Bold headline-case title and italic gray subtitle (the unit), left-aligned as on the charts.
-    Countries without data stay light gray."""
+def _style_map(fig: go.Figure) -> go.Figure:
+    """No title of its own (html_title draws it above the map mode toggle). Countries without data
+    stay light gray."""
     fig.update_geos(projection_type="natural earth", showcountries=True, countrycolor="white",
                     showland=True, landcolor=du.WHISPER, showocean=False,  # #ebebeb
                     showframe=False, coastlinecolor="white", lataxis_range=[-58, 85])  # crop Antarctica
     fig.update_layout(
-        title=dict(text=trend_title(title, subtitle, subtitle_px=16), font=dict(family=FONT, size=20, color="black"),
-                   yref="container", y=1 - FULL_WIDTH_TITLE_TOP / MAP_HEIGHT, yanchor="top",
-                   xref="container", x=0, xanchor="left",
-                   pad_l=TREND_TEXT_INDENT),
         paper_bgcolor="white", height=MAP_HEIGHT, margin=dict(l=10, r=10, t=MAP_MARGIN_TOP, b=10),
         font=dict(family=FONT, color="black"), hoverlabel=dict(font=AXIS_TEXT),
     )
     return fig
 
 
-def change_choropleth(change: pd.Series, names: pd.Series, spec: dict, *, title: str, subtitle: str,
-                      unit: str) -> go.Figure:
+def change_choropleth(change: pd.Series, names: pd.Series, spec: dict, *, unit: str) -> go.Figure:
     """
     World map of end year minus start year (index = ISO3 country_code), on the diverging palette
     centered on 0 (gold for a decrease, blue for an increase, like the table's arrows). Indicators
@@ -1806,7 +1809,7 @@ def change_choropleth(change: pd.Series, names: pd.Series, spec: dict, *, title:
         text=names.reindex(v.index), customdata=[_change_text(x, spec["fmt"], unit) for x in v],
         hovertemplate="%{text}: <b>%{customdata}</b><extra></extra>",
     ))
-    return _style_map(fig, title, subtitle)
+    return _style_map(fig)
 
 
 def _change_arrow(change: float, fmt: str) -> str:
@@ -1933,12 +1936,15 @@ def remembered_years_caption(remembered: tuple[int, int], years: list[int], spli
     return " ".join(lines) or None
 
 
-def html_title(title: str, subtitle: str):
-    """A title + subtitle for something that isn't a Plotly figure (the Country Details table),
-    styled like the full-width chart titles: bold 20px headline case, then an italic gray 16px
-    sentence-case subtitle, indented like the charts' titles."""
+def html_title(title: str, subtitle: str, gap_below: bool = True):
+    """The title + subtitle over each of the Distributions tab's four blocks (histogram, map,
+    Country Details table, box plot), drawn the same way for all four and outside the figures, so
+    a chart's toggles sit between its title and the plot: bold 20px headline case, then an italic
+    gray 16px sentence-case subtitle. Not indented (TREND_TEXT_INDENT is for the Country Profiles
+    tab only). gap_below: DIST_SUBTITLE_GAP of space under the subtitle, before a toggle or table
+    (the histogram's legend, inside its figure, needs none)."""
     st.markdown(
-        f'<div style="padding-left:{TREND_TEXT_INDENT}px;line-height:1.3">'
+        f'<div style="line-height:1.3;padding-bottom:{DIST_SUBTITLE_GAP if gap_below else 0}px">'
         f'<div style="font-size:20px;font-weight:700;color:black">{html.escape(headline_case(title))}</div>'
         f'<div style="font-size:16px;font-style:italic;color:{SUBTITLE_COLOR}">'
         f"{html.escape(sentence_case(subtitle))}</div></div>",
@@ -1946,19 +1952,8 @@ def html_title(title: str, subtitle: str):
     )
 
 
-def section_break(name: str, pad_top: str = "0.5rem"):
-    """A quiet section break on the Distributions tab: the name in small, light gray (#909090), then a
-    1px #d3d3d3 rule filling the rest of the line. Not an <h3>: main() restyles
-    those, and these stay lighter than the Trends section headers. The name never wraps or shrinks;
-    on a narrow screen only the rule gives way. pad_top: the space above it (more after a chart or table)."""
-    st.markdown(
-        f'<div role="heading" aria-level="3" style="display:flex;align-items:center;margin:{pad_top} 0 0.5rem">'
-        f'<span style="white-space:nowrap;flex-shrink:0;margin-right:15px;font-size:0.875rem;'
-        f'font-weight:400;color:{du.SUVA_GREY}">{html.escape(name)}</span>'
-        f'<span aria-hidden="true" style="flex-grow:1;min-width:0;height:1px;background-color:{du.LIGHT_GREY}">'
-        f"</span></div>",
-        unsafe_allow_html=True,
-    )
+DIST_BLOCK_GAP = 8  # px of extra space above each Distributions block's title
+DIST_SUBTITLE_GAP = 8  # px under the map's, Country Details' and box plot's subtitles
 
 
 # The tab's initial view (section, indicator): the first of these whose series has country data,
@@ -2079,7 +2074,6 @@ def tab_distributions(data: pd.DataFrame, countries: pd.DataFrame, errors: dict[
                if remembered else None)
     if caption:
         st.caption(caption)
-    section_break("Global Distribution Comparison Between Years")
     ya, yb = nearest_year(ya, years), nearest_year(yb, years)  # in case of a state set before snapping
     suffix, fmt, unit = spec.get("suffix", ""), spec["fmt"], spec["unit"]
     compared = wide[sorted({ya, yb})]
@@ -2087,15 +2081,19 @@ def tab_distributions(data: pd.DataFrame, countries: pd.DataFrame, errors: dict[
     # 1. Distribution
     dist = distribution_counts(compared, spec["bins"])
     if not dist.empty:
+        st.space(DIST_BLOCK_GAP)
+        html_title(*dist_bars_title(label, ya, yb), gap_below=False)
         st.plotly_chart(distribution_bars(dist, spec["bins"], label, ya, yb, x_title=sentence_case(unit),
                                           x_suffix=suffix, vlines=spec.get("vlines"), band=spec.get("band")),
                         width="stretch")
         notes = [ds.ESTIMATE_NOTES.get(spec["series"]), spec.get("bins_note"), spec.get("note"),
                  f"Values from {int(split + 0.5)} on are projections." if max(ya, yb) > split else None]
-        source_footer(indent=TREND_TEXT_INDENT, note=" ".join(n for n in notes if n) or None, source=source)
+        source_footer(note=" ".join(n for n in notes if n) or None, source=source)
 
-    # 2. Map: either year (each on its own color scale) or the change
-    section_break("Country-Level Insights", pad_top="1.25rem")  # over the map and the Country Details table
+    # 2. Map: either year (each on its own color scale) or the change. Its title depends on the
+    # map mode, so a placeholder keeps it above the toggle and it's filled in once the mode is known.
+    st.space(DIST_BLOCK_GAP)
+    map_title = st.empty()
     names = countries.set_index("country_code")["country_name"]
     change_unit = " pp" if suffix == "%" else ""  # a difference of two percentages: percentage points
     modes = [*sorted({ya, yb}), "change"]
@@ -2103,19 +2101,20 @@ def tab_distributions(data: pd.DataFrame, countries: pd.DataFrame, errors: dict[
                                     default=modes[-2],  # the end year
                                     format_func=lambda m: f"Change, {ya}–{yb}" if m == "change" else str(m))
     if map_mode == "change":
-        change_desc = "percentage points" if suffix == "%" else unit
-        st.plotly_chart(change_choropleth(
-            wide[yb] - wide[ya], names, spec, title=f"{label}, change {ya}–{yb}", subtitle=change_desc,
-            unit=change_unit), width="stretch")
+        with map_title:
+            html_title(f"{label}, change {ya}–{yb}", "percentage points" if suffix == "%" else unit)
+        st.plotly_chart(change_choropleth(wide[yb] - wide[ya], names, spec, unit=change_unit), width="stretch")
     else:
+        with map_title:
+            html_title(f"{label}, {map_mode}", unit)
         year_vals = wide[map_mode].dropna()
         st.plotly_chart(indicator_choropleth(
-            wide[map_mode], names, spec, title=f"{label}, {map_mode}", subtitle=unit,
-            z_range=(float(year_vals.min()), float(year_vals.max()))), width="stretch")
-    source_footer(indent=TREND_TEXT_INDENT, source=source)
-    st.space(4)  # 0.25rem extra before the table
+            wide[map_mode], names, spec, z_range=(float(year_vals.min()), float(year_vals.max()))),
+            width="stretch")
+    source_footer(source=source)
 
-    # 3. Table: both years plus the change between them, headed like the full-width charts
+    # 3. Table: both years plus the change between them, headed like the charts
+    st.space(DIST_BLOCK_GAP)
     html_title("Country Details", f"{label} ({unit}), {years_text([ya, yb])}, and the change between them")
     meta = countries.set_index("country_code")[["iso2_code", "country_name", "region", "income_group"]]
     table = meta.loc[meta.index.intersection(wide.index)].assign(
@@ -2154,8 +2153,9 @@ def tab_distributions(data: pd.DataFrame, countries: pd.DataFrame, errors: dict[
     stats, outliers, hidden = yearly_box_stats(wide, countries, log)
     if stats.empty:
         return  # no box plot, so no header over nothing
-    section_break("Global Distribution Shift By Year", pad_top="1.25rem")
-    # Two-button toggles. Per-indicator keys: a widget not rendered in a run
+    st.space(DIST_BLOCK_GAP)
+    html_title(*dist_boxes_title(label, int(stats.index.min()), int(stats.index.max()), unit, log))
+    # Two-button toggles, under the title and above the legend. Per-indicator keys: a widget not rendered in a run
     # loses its state, so switching the indicator (or the group) and back puts both on their
     # defaults again.
     fit_col, mean_col, _ = st.columns([2, 1, 3])
@@ -2169,7 +2169,7 @@ def tab_distributions(data: pd.DataFrame, countries: pd.DataFrame, errors: dict[
              f"Values from {int(split + 0.5)} on are projections." if stats.index.max() > split else None,
              (f"{hidden} {'country' if hidden == 1 else 'countries'} with a value of 0 in some years "
               f"{'is' if hidden == 1 else 'are'} not shown for those years (log scale).") if hidden else None]
-    source_footer(indent=TREND_TEXT_INDENT, note=" ".join(n for n in notes if n) or None, source=source)
+    source_footer(note=" ".join(n for n in notes if n) or None, source=source)
 
 
 # --------------------------------------------------------------------------

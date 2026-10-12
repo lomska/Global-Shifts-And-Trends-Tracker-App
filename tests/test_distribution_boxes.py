@@ -1,5 +1,5 @@
 """
-The Distributions tab's box plot per year (under "Global Distribution Shift By Year"): the per-year statistics
+The Distributions tab's box plot per year (its last block): the per-year statistics
 (quartiles, whiskers, outliers, the max/min countries, the log-axis exclusion), the figure (one
 hover trace covering each year once, a trace count that doesn't grow with the years), and, in
 the app, the chart for a linear and a log indicator with its two toggles (Yes/No, Show/Hide).
@@ -70,8 +70,10 @@ for fig, n in ((fig10, 10), (fig60, 60)):
 assert [tr.name for tr in fig10.data if tr.showlegend is not False] == ["Observed", "Forecast", "Median", "Mean"]
 assert fig10.layout.xaxis.dtick == 5 and fig60.layout.xaxis.dtick == 10
 assert tuple(fig10.layout.xaxis.range) == (1959, 1970)
-title = fig10.layout.title.text
-assert "<b>Distribution of Countries by Real GDP Growth, 1960–1969</b>" in title, title
+assert not fig10.layout.title.text  # the title is drawn above the figure and its toggles
+assert app_mod.dist_boxes_title("Real GDP growth", 1960, 1969, "percent", False) == (
+    "Distribution of countries by Real GDP growth, 1960–1969", "percent")
+assert app_mod.dist_boxes_title("Total population", 1960, 1969, "people", True)[1] == "people, log scale"
 _, no_mean = boxes(10, show_mean=False)
 assert "Mean" not in hover_traces(no_mean)[0].hovertemplate
 assert "Mean" not in [tr.name for tr in no_mean.data] and "Forecast" not in [tr.name for tr in no_mean.data]
@@ -87,9 +89,16 @@ print("OK: distribution_boxes")
 def box_figure(at):
     for el in at.get("plotly_chart"):
         spec = json.loads(el.proto.spec)
-        if re.search(r", \d{4}–\d{4}</b>", spec["layout"]["title"]["text"]):  # the histogram's ends "a vs. b"
+        if any(tr.get("type") == "box" for tr in spec["data"]):
             return spec
     raise AssertionError("no box plot on the page")
+
+
+def box_title(at):
+    """The box plot's html_title: the last title on the tab, ending "<first>–<last>"."""
+    titles = [m.value for m in at.tabs[0].markdown if "font-size:20px;font-weight:700" in m.value]
+    assert titles and re.search(r", \d{4}–\d{4}</div>", titles[-1]), titles
+    return titles[-1]
 
 
 def check(at, what):
@@ -110,7 +119,7 @@ with patch.object(du._SESSION, "get", side_effect=fake_get):
 
     assert toggles() == ("No", "Show"), toggles()
     fig = box_figure(at)
-    assert fig["layout"]["title"]["text"].startswith("<b>Distribution of Countries by Real GDP Growth, "), fig
+    assert ">Distribution of Countries by Real GDP Growth, " in box_title(at)
     assert fig["layout"]["yaxis"].get("type") != "log" and "range" not in fig["layout"]["yaxis"]
     hovers = [tr for tr in fig["data"] if tr.get("hoverinfo") != "skip"]
     assert len(hovers) == 1 and len(hovers[0]["x"]) == len(set(hovers[0]["x"])), hovers
@@ -139,7 +148,7 @@ with patch.object(du._SESSION, "get", side_effect=fake_get):
     check(at, "log indicator")
     fig = box_figure(at)
     assert fig["layout"]["yaxis"]["type"] == "log", fig["layout"]["yaxis"]
-    assert "log scale" in fig["layout"]["title"]["text"]
+    assert "log scale" in box_title(at)
     assert all(t in ("1", "10", "100", "1k", "10k", "100k") or t[-1] in "kMBT"
                for t in fig["layout"]["yaxis"]["ticktext"]), fig["layout"]["yaxis"]["ticktext"]
     at.segmented_control(key="dist_section").set_value("Economics").run()
