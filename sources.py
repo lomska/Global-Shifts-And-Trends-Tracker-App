@@ -1,6 +1,7 @@
 """
-Economic and other country indicators from sources other than the World Bank's population
-database: download + reshape, one function per source. The file layouts were checked against the
+Every data source the app charts: download + reshape, one function per source, all returning the
+same long table. The World Bank's population database (source 40, the Demographics section) is one
+of them, like WDI, the IMF and the rest. The file layouts were checked against the
 live sources on 27 September 2026 (IMF SDMX CSV columns, ND-GAIN zip paths) and, for the sources
 added on 28 September 2026 (World Happiness Report, Harvard ECI, UNDP, ILOSTAT, SWIID, World Bank
 PIP), on that day.
@@ -11,19 +12,20 @@ when the publisher's metadata can't be read) is when the publisher last released
 as "Last updated" under the Trends charts; where each one comes from is listed in CLAUDE.md. A
 missing or failed date never fails the fetch (_release_date). The table is one long table:
 
-  series_code    source prefix + code, e.g. "WB:SL.UEM.TOTL.ZS", "IMF:NGDP_RPCH", "NDGAIN:GAIN"
+  series_code    source prefix + code, e.g. "POP:SP.POP.TOTL", "WB:SL.UEM.TOTL.ZS", "IMF:NGDP_RPCH"
   series_name    SERIES[series_code]
   year           int
   country_code   unified code from country_dict (country ISO3 or one of the 12 WB aggregates)
   country_name   unified name from country_dict
   value          float, never NaN
-  is_projection  True for projections (IMF WEO, ILO modelled estimates) and nowcasts (PIP), else False
+  is_projection  True for projections (population data, IMF WEO, ILO modelled estimates) and
+                 nowcasts (PIP), else False
 
 Aggregates are never computed: World, regions and income groups appear only where a source
-publishes them (WDI: all 12; IMF: World).
+publishes them (population data and WDI: all 12; IMF: World).
 Series made of modelled or imputed values rather than observations are listed in
 ESTIMATE_NOTES, whose note the app shows under their charts.
-Caching and error handling live in data_utils.load_extra_data().
+Caching and error handling live in data_utils.load_data().
 """
 
 from __future__ import annotations
@@ -44,7 +46,7 @@ import country_dict as cd
 log = logging.getLogger(__name__)
 
 SCHEMA = ["series_code", "series_name", "year", "country_code", "country_name", "value", "is_projection"]
-FIRST_YEAR = 1960  # same start as the population data
+FIRST_YEAR = 1960  # the population data's first year
 TIMEOUT = 180
 
 # Browser-like headers: some publisher sites refuse requests that don't look like a browser.
@@ -57,6 +59,26 @@ HEADERS = {
 # --------------------------------------------------------------------------
 # Series catalog: code -> name. The app's charts and Distributions list refer to these codes.
 # --------------------------------------------------------------------------
+
+POPULATION = "POP"  # the population data's source key and series prefix
+POP_SERIES = {  # World Bank source 40 ("Population estimates and projections"): history and projections to 2050
+    "SP.POP.TOTL": "Population, total",
+    "SP.POP.GROW": "Population growth (annual %)",
+    "SP.DYN.TFRT.IN": "Fertility rate, total (births per woman)",
+    "SP.DYN.LE00.IN": "Life expectancy at birth, total (years)",
+    "SP.POP.0014.TO.ZS": "Population ages 0-14 (% of total population)",
+    "SP.POP.65UP.TO.ZS": "Population ages 65 and above (% of total population)",
+    "SP.POP.1564.TO.ZS": "Population ages 15-64 (% of total population)",
+    "SM.POP.NETM": "Net migration",
+    "SP.DYN.CBRT.IN": "Birth rate, crude (per 1,000 people)",
+    "SP.DYN.CDRT.IN": "Death rate, crude (per 1,000 people)",
+    "SH.DYN.MORT": "Mortality rate, under-5 (per 1,000)",  # history only, no projection
+    "SP.POP.DPND": "Age dependency ratio (% of working-age population)",
+    "SP.POP.DPND.OL": "Age dependency ratio, old",
+    "SP.POP.DPND.YG": "Age dependency ratio, young",
+    "SP.DYN.LE00.FE.IN": "Life expectancy at birth, female (years)",
+    "SP.DYN.LE00.MA.IN": "Life expectancy at birth, male (years)",
+}
 
 WDI_SERIES = {
     "SL.UEM.TOTL.ZS": "Unemployment, total (% of labor force, modelled ILO estimate)",
@@ -145,6 +167,7 @@ SINGLE_SERIES = {  # sources with one series each
 }
 
 SERIES: dict[str, str] = {
+    **{f"{POPULATION}:{k}": v for k, v in POP_SERIES.items()},
     **{f"WB:{k}": v for k, v in WDI_SERIES.items()},
     **{f"IMF:{k}": v for k, v in IMF_SERIES.items()},
     **dict(NDGAIN_SERIES.values()),
@@ -202,7 +225,8 @@ ESTIMATE_NOTES: dict[str, str] = {
 
 
 def source_of(series_code: str) -> str:
-    """'IMF:NGDP_RPCH' -> 'IMF' (the key into SOURCES; World Bank WDI codes start with 'WB:')."""
+    """'IMF:NGDP_RPCH' -> 'IMF' (the key into SOURCES; World Bank WDI codes start with 'WB:').
+    Also works for the app's derived population series ('POP:natural_increase' -> 'POP')."""
     prefix = series_code.split(":", 1)[0]
     return "WDI" if prefix == "WB" else prefix
 
@@ -286,10 +310,84 @@ def _read_excel(content: bytes, **kwargs) -> pd.DataFrame | dict[str, pd.DataFra
 
 
 # --------------------------------------------------------------------------
+# World Bank population estimates and projections (source 40, JSON API)
+# --------------------------------------------------------------------------
+# The only source with projections to 2050 alongside history from 1960. Not every series is yearly in
+# the projection period: birth/death rates, fertility and life expectancy jump from the last estimate
+# straight to 2030, 2035, ..., 2050; under-5 mortality has no projection at all. Its codes are already
+# the World Bank's, the app's country codes, so it skips country_dict (and keeps every aggregate the
+# API sends; the app only uses the 12 in country_dict.AGGREGATES).
+
+WB_API_BASE = "https://api.worldbank.org/v2"
+POP_URL = WB_API_BASE + "/sources/40/country/all/series/{code}/time/all/data"
+POP_TIMEOUT = 60
+# Source 40 has no per-value flag for estimate vs projection, but WDI carries the same estimates only:
+# the last year WDI reports for World total population is the last estimated year.
+ESTIMATES_SERIES = "SP.POP.TOTL"
+LAST_ESTIMATE_URL = WB_API_BASE + "/country/WLD/indicator/" + ESTIMATES_SERIES
+
+
+def _pop_one(session, code: str) -> tuple[pd.DataFrame, dt.date | None]:
+    """One series, every entity and year, plus the "lastupdated" date the API sends with it. Handles
+    pagination, though one request with a large per_page normally returns everything."""
+    rows, page, pages, updated = [], 1, 1, None
+    while page <= pages:
+        payload = _get(session, POP_URL.format(code=code), timeout=POP_TIMEOUT,
+                       format="json", per_page=32000, page=page).json()
+        if not isinstance(payload, dict):
+            raise ValueError(f"unexpected population response for {code}: {str(payload)[:200]}")
+        pages = int(payload.get("pages") or 1)
+        updated = updated or parse_date(payload.get("lastupdated"))
+        for item in payload.get("source", {}).get("data", []):
+            by_concept = {v["concept"]: v for v in item.get("variable", [])}
+            country, time_ = by_concept.get("Country"), by_concept.get("Time")
+            if country is None or time_ is None or item.get("value") is None:
+                continue
+            rows.append({"country_code": country["id"], "country_name": country["value"],
+                         "year": time_.get("value"), "value": item["value"]})
+        page += 1
+    table = pd.DataFrame(rows, columns=["country_code", "country_name", "year", "value"])
+    return table.assign(series_code=f"{POPULATION}:{code}"), updated
+
+
+def date_rule_last_estimate(today: dt.date | None = None) -> int:
+    """
+    Fallback for last_estimate_year() when the WDI lookup fails: a date-based guess. From August 1st,
+    roughly when the World Bank publishes the prior year's estimates, last year is presumed estimated;
+    before that, the year before.
+    """
+    today = today or dt.date.today()
+    return today.year - 1 if today.month >= 8 else today.year - 2
+
+
+def last_estimate_year(session) -> int:
+    """The population data's last estimated year: World total population's most recent non-empty year in
+    WDI (mrnev=1), or date_rule_last_estimate() if that can't be read. Later years are projections."""
+    try:
+        payload = _get(session, LAST_ESTIMATE_URL, timeout=15, format="json", mrnev=1).json()
+        return int(payload[1][0]["date"])
+    except Exception as exc:  # noqa: BLE001 -- charts must still split: use the date rule
+        log.warning("Could not read the last WDI estimate year: %s; using the date rule", exc)
+        return date_rule_last_estimate()
+
+
+def fetch_population(session) -> tuple[pd.DataFrame, dt.date | None]:
+    """Every POP_SERIES series, fetched concurrently (one request each, I/O-bound), with is_projection for
+    the years after last_estimate_year(). One failed series fails the source."""
+    with concurrent.futures.ThreadPoolExecutor(max_workers=len(POP_SERIES) + 1) as ex:
+        last_estimate = ex.submit(last_estimate_year, session)
+        frames, dates = zip(*ex.map(lambda code: _pop_one(session, code), POP_SERIES))
+        last = last_estimate.result()
+    table = pd.concat(frames, ignore_index=True)
+    table["year"] = pd.to_numeric(table["year"], errors="coerce")
+    return _finish(table.assign(is_projection=table["year"] > last)), _latest(dates)
+
+
+# --------------------------------------------------------------------------
 # World Bank WDI (JSON API)
 # --------------------------------------------------------------------------
 
-WDI_URL = "https://api.worldbank.org/v2/country/all/indicator/{code}"
+WDI_URL = WB_API_BASE + "/country/all/indicator/{code}"
 # The World Bank API now and then leaves a request hanging, and one failed series fails the whole
 # source (seen on Streamlit Community Cloud, 2026-10-11: a 180 s read timeout). A series normally
 # answers within seconds, so: give up on a request after WDI_TIMEOUT and try it again.
@@ -611,7 +709,8 @@ def fetch_pip(session) -> tuple[pd.DataFrame, dt.date | None]:
 # --------------------------------------------------------------------------
 
 SOURCES: dict[str, dict] = {
-    "WDI": dict(label="World Bank, World Development Indicators", fetch=fetch_wdi),
+    POPULATION: dict(label="World Bank, Population estimates and projections", fetch=fetch_population),
+    "WDI":dict(label="World Bank, World Development Indicators", fetch=fetch_wdi),
     "IMF": dict(label="IMF, World Economic Outlook", fetch=fetch_imf),
     "NDGAIN": dict(label="University of Notre Dame, ND-GAIN Country Index", fetch=fetch_ndgain),
     "WHR": dict(label="World Happiness Report 2026, from the Gallup World Poll", fetch=fetch_whr),

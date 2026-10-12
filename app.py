@@ -4,11 +4,11 @@ Global Shifts & Trends Tracker -- an interactive Streamlit app in two tabs: Tren
 Economics to Healthcare) and Distributions (one indicator across all countries, two
 years compared).
 
-Data: World Bank "Population estimates and projections" (source 40), covering
-1960-2025 history plus World Bank projections through 2050, and, for every other
-section, the sources in extra_sources.py (World Bank WDI and PIP, IMF World Economic
-Outlook, ND-GAIN, World Happiness Report, Harvard Growth Lab,
-UNDP, ILOSTAT, SWIID). Pulled live and cached for a day at a time.
+Data: the sources in sources.py -- World Bank population estimates and projections (source 40,
+history from 1960 plus projections through 2050, for Demographics), World Bank WDI and PIP, IMF
+World Economic Outlook, ND-GAIN, World Happiness Report, Harvard Growth Lab, UNDP, ILOSTAT and
+SWIID -- loaded by data_utils.load_data() into one long table, `data`. Pulled live and cached for
+a day at a time.
 
 Chart styling follows the Urban Institute data visualization style guide
 (urbaninstitute.github.io/graphics-styleguide) and its R theme, urbnthemes, except for the
@@ -31,7 +31,7 @@ import plotly.graph_objects as go
 import streamlit as st
 
 import data_utils as du
-import extra_sources as xs
+import sources as ds
 
 # --------------------------------------------------------------------------
 # Page config
@@ -291,14 +291,12 @@ def shared_legend(names, color_map: dict, forecast_key: bool = False, margin_top
     )
 
 
-POP_SOURCE = "World Bank, Population estimates and projections"
-# Names for the population loader's error keys (du.load_population_data); extra sources: du.EXTRA_SOURCES.
-SOURCE_KEY_NAMES = {du.POPULATION_SOURCE: POP_SOURCE, du.COUNTRIES_SOURCE: "World Bank country list"}
+COUNTRIES_NAME = "World Bank country list"  # du.COUNTRIES_SOURCE's display name
 
 
 def source_name(key: str) -> str:
-    """Display name for a key of the merged errors: the population data, the country list or an extra source."""
-    return SOURCE_KEY_NAMES.get(key) or du.EXTRA_SOURCES.get(key, key)
+    """Display name for a key of the merged errors: a source (du.SOURCE_LABELS) or the country list."""
+    return COUNTRIES_NAME if key == du.COUNTRIES_SOURCE else du.SOURCE_LABELS.get(key, key)
 
 
 # Every source's licence and full credit, shown in a dialog from the sidebar: the short source lines
@@ -346,7 +344,7 @@ def source_text(source: str | list[str], updated: dt.date | None | list[dt.date 
     return "; ".join(s + (f" · Last updated {month_year(d)}" if d else "") for s, d in zip(sources, dates))
 
 
-def source_footer(indent: int = 0, note: str | None = None, source: str | list[str] = POP_SOURCE,
+def source_footer(source: str | list[str], indent: int = 0, note: str | None = None,
                   margin_top: str = "-0.75rem", updated: dt.date | None | list[dt.date | None] = None):
     """The data-source line under a chart, then an optional `note` line, both 11px black, as
     the Urban style guide sets them ("Source: ..." first, "Note: ..." after it). updated: the
@@ -369,46 +367,42 @@ def _hex_rgba(hex_color: str, alpha: float) -> str:
 # Data loading
 # --------------------------------------------------------------------------
 
-def load_population() -> tuple[pd.DataFrame, pd.DataFrame, dict[str, str]]:
-    """
-    The population data and country list (du.load_population_data) with a visible spinner. Never
-    stops the app: a failed part is returned in the errors (du.POPULATION_SOURCE: an empty table;
-    du.COUNTRIES_SOURCE: a fallback country list) for population_warnings() and the sections.
-    """
+def load_countries() -> tuple[pd.DataFrame, dict[str, str]]:
+    """The country list (du.load_countries). Never stops the app: if it can't be fetched, a fallback
+    list comes back with errors[du.COUNTRIES_SOURCE], for countries_warning()."""
     try:
-        with st.spinner("Loading World Bank population data -- first run can take up to a minute..."):
-            return du.load_population_data()
-    except Exception as exc:  # noqa: BLE001 -- load_population_data reports failures; this is a last resort
-        error = "".join(traceback.format_exception(exc))
-        return (du.empty_population_table(), du.fallback_countries(),
-                {du.POPULATION_SOURCE: error, du.COUNTRIES_SOURCE: error})
+        return du.load_countries()
+    except Exception as exc:  # noqa: BLE001 -- load_countries reports failures; this is a last resort
+        return du.fallback_countries(), {du.COUNTRIES_SOURCE: "".join(traceback.format_exception(exc))}
 
 
-def population_warnings(errors: dict[str, str], countries: pd.DataFrame):
-    """A warning at the top of the page naming what failed among the population data and the
-    country list, with the details in an expander."""
-    failed = [k for k in (du.POPULATION_SOURCE, du.COUNTRIES_SOURCE) if k in errors]
-    if not failed:
+def load_data() -> tuple[pd.DataFrame, dict[str, str]]:
+    """Every source's data (du.load_data) with a visible spinner. Never stops the app: a failed source
+    only empties its own charts, with a warning where they would be."""
+    try:
+        with st.spinner("Loading the data -- first run can take up to a minute..."):
+            return du.load_data()
+    except Exception as exc:  # noqa: BLE001 -- load_data reports per source; this is a last resort
+        return du.empty_data(), {s: f"{type(exc).__name__}: {exc}" for s in du.SOURCE_LABELS}
+
+
+def countries_warning(errors: dict[str, str], countries: pd.DataFrame):
+    """A warning at the top of the page if the country list couldn't be loaded, with the details in an
+    expander. (A failed source is named where its charts would be, like any other.)"""
+    if du.COUNTRIES_SOURCE not in errors:
         return
-    lines = []
-    if du.POPULATION_SOURCE in errors:
-        lines.append(f"Couldn't load the population data ({POP_SOURCE}): Demographics charts and indicators "
-                     "are left out.")
-    if du.COUNTRIES_SOURCE in errors:
-        lines.append("Couldn't load the World Bank country list: "
-                     + ("a saved copy is used instead." if du.has_country_groups(countries) else
-                        "a basic list of country names is used instead, so region and income-group information "
-                        "is missing."))
-    st.warning("\n\n".join(lines) + "\n\nThe rest of the app works with the sources that did load. "
-               "Use **Refresh data** in the sidebar to retry.")
+    st.warning("Couldn't load the World Bank country list: "
+               + ("a saved copy is used instead." if du.has_country_groups(countries) else
+                  "a basic list of country names is used instead, so region and income-group information "
+                  "is missing.")
+               + "\n\nUse **Refresh data** in the sidebar to retry.")
     with st.expander("Error details"):
-        st.code("\n".join(f"{SOURCE_KEY_NAMES[k]}: {errors[k]}" for k in failed))
+        st.code(f"{COUNTRIES_NAME}: {errors[du.COUNTRIES_SOURCE]}")
 
 
-def stop_if_nothing_loaded(errors: dict[str, str], xdf: pd.DataFrame):
-    """Stop the app, with an error, only when nothing can be shown: the population data failed and
-    every extra source failed or returned no data."""
-    if du.POPULATION_SOURCE not in errors or not xdf.empty:  # xdf is empty when every extra source failed
+def stop_if_nothing_loaded(errors: dict[str, str], data: pd.DataFrame):
+    """Stop the app, with an error, only when nothing can be shown: every source failed or returned no data."""
+    if not data.empty:
         return
     st.error(
         "Couldn't reach the World Bank API or any other data source.\n\n"
@@ -477,7 +471,7 @@ def trend_chart(
     y_suffix: str = "",
     y_format: str = ",.2f",
     hline_zero: bool = False,
-    forecast_x: float | None = None,
+    forecast_x: float = math.inf,
     y_mid: float | None = None,
     y_extent: tuple[float, float] | None = None,
     ref_line: tuple[float, str] | None = None,
@@ -486,9 +480,9 @@ def trend_chart(
 ) -> go.Figure | None:
     """
     Line chart for the Trends tab: each series split into solid (observed) and dotted
-    (forecast) parts at forecast_x (default du.forecast_start(); math.inf for a series without
-    projections). No axis titles (the unit is in the subtitle); multi-line charts get a legend
-    across the top. y_suffix is for the tooltip only. None if no series has data. hline_zero=True draws a
+    (forecast) parts at forecast_x (series_spec sets it from the data, du.series_split; the default,
+    math.inf, means no projections). No axis titles (the unit is in the subtitle); multi-line charts get
+    a legend across the top. y_suffix is for the tooltip only. None if no series has data. hline_zero=True draws a
     zero line and extends the y-axis to include 0, so the line shows even for all-positive data.
     y_mid (e.g. 50 on a 0-100 score, 0.5 on a 0-1 one): the y-axis is symmetric around it, with
     a tick on it (see symmetric_axis). y_extent: the (min, max) that axis must cover, instead of
@@ -507,7 +501,7 @@ def trend_chart(
     lines = {label: s for label, s in lines.items() if not s.empty}
     if not lines:
         return None
-    split = du.forecast_start() if forecast_x is None else forecast_x
+    split = forecast_x
     fig = go.Figure()
     if hline_zero:
         fig.add_hline(y=0, line_width=1, line_color=du.ZERO_LINE_COLOR)
@@ -574,12 +568,12 @@ def trend_stacked_bar(
     y_suffix: str = "",
     y_format: str = ",.2f",
     hover_only: dict[str, pd.Series] | None = None,
-    forecast_x: float | None = None,
+    forecast_x: float = math.inf,
 ) -> go.Figure | None:
     """
     Stacked bars, one per year (first series at the bottom). barmode "relative" stacks
     positive values above zero and negative ones below. Solid fill for observed years,
-    FORECAST_BAR_ALPHA for forecast years (>= forecast_x, default du.forecast_start()). Bars
+    FORECAST_BAR_ALPHA for forecast years (>= forecast_x, see trend_chart). Bars
     are about twice as wide as the gaps between them (Urban style). hover_only series (e.g. a total)
     appear in the tooltip without being drawn.
     Only years where every series has a value are drawn: a gap would otherwise stack as 0
@@ -588,7 +582,7 @@ def trend_stacked_bar(
     wide = pd.DataFrame(lines).dropna(how="any")
     if wide.empty:
         return None
-    split = du.forecast_start() if forecast_x is None else forecast_x
+    split = forecast_x
     opacity = [FORECAST_BAR_ALPHA if year >= split else 1.0 for year in wide.index]
     fig = go.Figure()
     for label in wide.columns:
@@ -629,13 +623,11 @@ def entity_header(name: str, countries: pd.DataFrame, code: str):
     st.markdown(f"<h2>{img}{html.escape(name)}</h2>", unsafe_allow_html=True)
 
 
-def trends_entity_options(df: pd.DataFrame, countries: pd.DataFrame, xdf: pd.DataFrame) -> dict[str, str]:
+def trends_entity_options(data: pd.DataFrame, countries: pd.DataFrame) -> dict[str, str]:
     """code -> World Bank name: World, the 7 regions, the 4 income groups, then every country
-    (alphabetical) that has population data -- or, without the population data, any extra-source data."""
+    (alphabetical) with any data."""
     names = countries.set_index("country_code")["country_name"].to_dict()
-    with_data = set(df.loc[df["series_code"] == "SP.POP.TOTL", "country_code"].unique())
-    if not with_data:
-        with_data = set(xdf["country_code"].unique())
+    with_data = set(data["country_code"].unique())
     options = {du.WORLD_CODE: names.get(du.WORLD_CODE, "World")}
     options.update({code: names.get(code, name) for code, name in du.REGION_CODES.items()})
     options.update({code: names.get(code, name) for code, name in du.INCOME_CODES.items()})
@@ -676,18 +668,15 @@ def signed_log_axis(lo: float, hi: float, include_zero: bool = True) -> dict:
                 ticktext=[("−" if v < 0 else "") + f"{abs(v):,.0f}" for v in ticks])
 
 
-def global_extent(xdf: pd.DataFrame, codes: list[str]) -> tuple[float, float] | None:
+def global_extent(data: pd.DataFrame, codes: list[str]) -> tuple[float, float] | None:
     """(min, max) of these series over every country and year in the data, so a chart's y-axis is
     the same for whichever country is selected (index_extent's counterpart across countries)."""
-    values = xdf.loc[xdf["series_code"].isin(codes), "value"].dropna()
-    return (float(values.min()), float(values.max())) if len(values) else None
-
-
-POP_SOURCES = [(POP_SOURCE, du.POPULATION_SOURCE)]
+    ranges = du.series_ranges(data).reindex(codes).dropna()
+    return (float(ranges["min"].min()), float(ranges["max"].max())) if len(ranges) else None
 
 
 def trend_spec(chart_fn, lines: dict[str, pd.Series], colors: dict[str, str], title: str, unit: str, *,
-               sources: list[tuple[str, str]] = POP_SOURCES, note: str | None = None, **kw) -> dict:
+               sources: list[tuple[str, str]], note: str | None = None, **kw) -> dict:
     """One Trends chart: chart_fn(lines, colors, title=..., **kw), with its data sources as
     [(footer label, source key)] (the key looks up its release date, du.source_updates) and an
     optional note, for the footer."""
@@ -757,14 +746,6 @@ def in_rows(*rows: list[dict]) -> list[dict]:
     return [dict(spec, row=n) for n, row in enumerate(rows) for spec in row]
 
 
-def series_split(series_code: str, xdf: pd.DataFrame) -> float:
-    """Where a series' projections start: du.forecast_start() for the population data, the first
-    projected year - 0.5 for IMF series, math.inf (no projections) for everything else."""
-    if series_code in du.INDICATORS or series_code in (du.NATURAL_CHANGE_RATE, du.NET_MIGRATION_RATE):
-        return du.forecast_start()
-    return du.projection_starts(xdf).get(series_code, math.inf)
-
-
 def failed_sources_warning(errors: dict[str, str], sources: list[str]):
     """A warning naming which of `sources` failed to load (their charts are empty), with details."""
     failed = [s for s in sources if s in errors]
@@ -777,64 +758,66 @@ def failed_sources_warning(errors: dict[str, str], sources: list[str]):
         st.code("\n".join(f"{s}: {errors[s]}" for s in failed))
 
 
-def demographics_charts(t: pd.DataFrame) -> list[dict]:
-    pop_div, pop_unit = count_unit(t["SP.POP.TOTL"].abs().max())
-    ni_div, ni_unit = count_unit(t[["natural_increase", "SM.POP.NETM"]].abs().max().max())
+def series_spec(chart_fn, series: dict[str, str], t: pd.DataFrame, data: pd.DataFrame, colors: dict[str, str],
+                title: str, unit: str, *, note: str | None = None, **kw) -> dict:
+    """trend_spec for {line label: series code} (columns of t, du.trends_data): the forecast split
+    (du.series_split: projections dotted, a series without them solid throughout) comes from the first
+    code. The footer names each source once, in the order of the lines, with its release date (the
+    Observed/Forecast legend at the top of the tab explains the dotted lines, so the footer doesn't).
+    The note joins every code's ds.ESTIMATE_NOTES entry, once each (a note contained in another one
+    is dropped)."""
+    first = next(iter(series.values()))
+    split = du.series_split(first, data)
+    keys = list(dict.fromkeys(ds.source_of(code) for code in series.values()))
+    sources = [(du.SOURCE_LABELS[key], key) for key in keys]
+    notes = list(dict.fromkeys(ds.ESTIMATE_NOTES[c] for c in series.values() if c in ds.ESTIMATE_NOTES))
+    notes = [n for n in notes if not any(n != m and n in m for m in notes)] + ([note] if note else [])
+    return trend_spec(chart_fn, {label: t[code] for label, code in series.items()}, colors, title, unit,
+                      sources=sources, note=" ".join(notes) or None, forecast_x=split, **kw)
+
+
+def demographics_charts(t: pd.DataFrame, data: pd.DataFrame) -> list[dict]:
+    pop_div, pop_unit = count_unit(t[du.POP_TOTAL].abs().max())
+    ni_div, ni_unit = count_unit(t[[du.NATURAL_INCREASE, du.NET_MIGRATION]].abs().max().max())
+    # Counts shown in readable units (millions of people, ...): those columns divided by their scale.
+    t = t.assign(**{du.POP_TOTAL: t[du.POP_TOTAL] / pop_div, du.NET_MIGRATION: t[du.NET_MIGRATION] / ni_div,
+                    du.NATURAL_INCREASE: t[du.NATURAL_INCREASE] / ni_div})
 
     def fmt(divisor):  # whole people when unscaled, else two decimals
         return ",.0f" if divisor == 1.0 else ",.2f"
 
     c = du.CATEGORICAL_COLORS  # Denim, Golden Sand, Nero, Light Grey, Old Rose, Genoa, ...
     return [
-        trend_spec(trend_chart, {"Population": t["SP.POP.TOTL"] / pop_div}, {},
-                   "Total population", pop_unit, y_format=fmt(pop_div), hline_zero=True),
-        trend_spec(trend_chart, {"Growth rate": t["SP.POP.GROW"]}, {},
-                   "Annual population growth rate", "%", y_suffix="%", hline_zero=True),
-        trend_spec(trend_chart, {"Birth rate": t["SP.DYN.CBRT.IN"], "Death rate": t["SP.DYN.CDRT.IN"]},
-                   {"Birth rate": c[0], "Death rate": c[1]},
-                   "Birth and death rates", "births/deaths per 1,000 population", hline_zero=True),
-        trend_spec(trend_chart, {"Fertility rate": t["SP.DYN.TFRT.IN"]}, {},
-                   "Total fertility rate", "live births per woman", hline_zero=True,
-                   ref_line=REPLACEMENT_LINE),
-        trend_spec(trend_chart, {"Under-5 mortality": t["SH.DYN.MORT"]}, {},
-                   "Under-5 mortality rate", "deaths per 1,000 live births", y_format=",.1f", hline_zero=True,
-                   ref_line=U5_MORTALITY_LINE),
-        trend_spec(trend_chart, {"Ages 0–14": t["SP.POP.0014.TO.ZS"], "Ages 15–64": t["SP.POP.1564.TO.ZS"],
-                                 "Ages 65+": t["SP.POP.65UP.TO.ZS"]},
-                   {"Ages 0–14": c[0], "Ages 15–64": c[2], "Ages 65+": c[1]},
-                   "Age group shares", "%", y_suffix="%", hline_zero=True),
-        trend_spec(trend_stacked_bar, {"Youth": t["SP.POP.DPND.YG"], "Elderly": t["SP.POP.DPND.OL"]},
-                   {"Youth": c[0], "Elderly": c[1]},
-                   "Age dependency ratio", "# dependents per 100 working-age people",
-                   y_format=",.1f", hover_only={"Total": t["SP.POP.DPND"]}),
-        trend_spec(trend_chart, {"Total": t["SP.DYN.LE00.IN"], "Female": t["SP.DYN.LE00.FE.IN"],
-                                 "Male": t["SP.DYN.LE00.MA.IN"]},
-                   {"Total": c[2], "Female": c[1], "Male": c[0]},
-                   "Life expectancy at birth", "years", y_format=",.1f"),
-        trend_spec(trend_stacked_bar, {"Net migration": t["SM.POP.NETM"] / ni_div,
-                                       "Natural growth": t["natural_increase"] / ni_div},
-                   {"Natural growth": c[1], "Net migration": c[0]},
-                   "Natural population growth & net migration", f"{ni_unit} (natural growth = births minus deaths)",
-                   y_format=fmt(ni_div)),
+        series_spec(trend_chart, {"Population": du.POP_TOTAL}, t, data, {},
+                    "Total population", pop_unit, y_format=fmt(pop_div), hline_zero=True),
+        series_spec(trend_chart, {"Growth rate": "POP:SP.POP.GROW"}, t, data, {},
+                    "Annual population growth rate", "%", y_suffix="%", hline_zero=True),
+        series_spec(trend_chart, {"Birth rate": du.BIRTH_RATE, "Death rate": du.DEATH_RATE}, t, data,
+                    {"Birth rate": c[0], "Death rate": c[1]},
+                    "Birth and death rates", "births/deaths per 1,000 population", hline_zero=True),
+        series_spec(trend_chart, {"Fertility rate": "POP:SP.DYN.TFRT.IN"}, t, data, {},
+                    "Total fertility rate", "live births per woman", hline_zero=True,
+                    ref_line=REPLACEMENT_LINE),
+        series_spec(trend_chart, {"Under-5 mortality": "POP:SH.DYN.MORT"}, t, data, {},
+                    "Under-5 mortality rate", "deaths per 1,000 live births", y_format=",.1f", hline_zero=True,
+                    ref_line=U5_MORTALITY_LINE),
+        series_spec(trend_chart, {"Ages 0–14": "POP:SP.POP.0014.TO.ZS", "Ages 15–64": "POP:SP.POP.1564.TO.ZS",
+                                  "Ages 65+": "POP:SP.POP.65UP.TO.ZS"}, t, data,
+                    {"Ages 0–14": c[0], "Ages 15–64": c[2], "Ages 65+": c[1]},
+                    "Age group shares", "%", y_suffix="%", hline_zero=True),
+        series_spec(trend_stacked_bar, {"Youth": "POP:SP.POP.DPND.YG", "Elderly": "POP:SP.POP.DPND.OL"}, t, data,
+                    {"Youth": c[0], "Elderly": c[1]},
+                    "Age dependency ratio", "# dependents per 100 working-age people",
+                    y_format=",.1f", hover_only={"Total": t["POP:SP.POP.DPND"]}),
+        series_spec(trend_chart, {"Total": "POP:SP.DYN.LE00.IN", "Female": "POP:SP.DYN.LE00.FE.IN",
+                                  "Male": "POP:SP.DYN.LE00.MA.IN"}, t, data,
+                    {"Total": c[2], "Female": c[1], "Male": c[0]},
+                    "Life expectancy at birth", "years", y_format=",.1f"),
+        series_spec(trend_stacked_bar, {"Net migration": du.NET_MIGRATION, "Natural growth": du.NATURAL_INCREASE},
+                    t, data, {"Natural growth": c[1], "Net migration": c[0]},
+                    "Natural population growth & net migration", f"{ni_unit} (natural growth = births minus deaths)",
+                    y_format=fmt(ni_div)),
     ]
-
-
-def extra_spec(chart_fn, series: dict[str, str], t: pd.DataFrame, xdf: pd.DataFrame, colors: dict[str, str],
-               title: str, unit: str, *, note: str | None = None, **kw) -> dict:
-    """trend_spec for extra-source series ({line label: series code}): the forecast split
-    (IMF/ILO projections and PIP nowcasts dotted, others solid throughout) comes from the first
-    code. The footer names each source once, in the order of the lines, with its release date (the
-    Observed/Forecast legend at the top of the tab explains the dotted lines, so the footer doesn't).
-    The note joins every code's xs.ESTIMATE_NOTES entry, once each (a note contained in another one
-    is dropped)."""
-    first = next(iter(series.values()))
-    split = series_split(first, xdf)
-    keys = list(dict.fromkeys(xs.source_of(code) for code in series.values()))
-    sources = [(du.EXTRA_SOURCES[key], key) for key in keys]
-    notes = list(dict.fromkeys(xs.ESTIMATE_NOTES[c] for c in series.values() if c in xs.ESTIMATE_NOTES))
-    notes = [n for n in notes if not any(n != m and n in m for m in notes)] + ([note] if note else [])
-    return trend_spec(chart_fn, {label: t[code] for label, code in series.items()}, colors, title, unit,
-                      sources=sources, note=" ".join(notes) or None, forecast_x=split, **kw)
 
 
 def scaled_count(t: pd.DataFrame, code: str, noun: str) -> tuple[pd.DataFrame, str, str]:
@@ -853,7 +836,7 @@ SECTOR_COLORS = {"Agriculture": du.CATEGORICAL_COLORS[1], "Industry": du.CATEGOR
                  "Services": du.CATEGORICAL_COLORS[0]}
 
 
-def economics_charts(t: pd.DataFrame, xdf: pd.DataFrame) -> list[dict]:
+def economics_charts(t: pd.DataFrame, data: pd.DataFrame) -> list[dict]:
     """Five rows, as the user set on 2026-09-30: the headline trio
     (growth, prices, unemployment); the fiscal block (revenue and expenditure -> balance -> debt:
     the balance is revenue minus expenditure, and deficits build up the debt); the external block;
@@ -867,79 +850,79 @@ def economics_charts(t: pd.DataFrame, xdf: pd.DataFrame) -> list[dict]:
     sector = dict(pct, y_extent=index_extent(t, sector_codes))
     return in_rows(
         [
-            extra_spec(trend_chart, {"GDP growth": "IMF:NGDP_RPCH"}, t, xdf, {},
-                       "Real GDP growth", "annual % change", y_suffix="%", hline_zero=True),
-            extra_spec(trend_chart, {"Consumer prices": "IMF:PCPIPCH"}, t, xdf, {},
-                       "Consumer prices", "annual average, % change (log scale)", y_suffix="%", y_format=",.1f",
-                       hline_zero=True, y_log=True,
-                       note="Log scale: each step up the axis is about ten times larger, so years of very high "
-                            "inflation don't flatten the rest; deflation (below 0) is mirrored below the zero line."),
-            extra_spec(trend_chart, {"Unemployment": "WB:SL.UEM.TOTL.ZS"}, t, xdf, {},
-                       "Unemployment rate", "% of labor force (modelled ILO estimate)", y_suffix="%", hline_zero=True),
+            series_spec(trend_chart, {"GDP growth": "IMF:NGDP_RPCH"}, t, data, {},
+                        "Real GDP growth", "annual % change", y_suffix="%", hline_zero=True),
+            series_spec(trend_chart, {"Consumer prices": "IMF:PCPIPCH"}, t, data, {},
+                        "Consumer prices", "annual average, % change (log scale)", y_suffix="%", y_format=",.1f",
+                        hline_zero=True, y_log=True,
+                        note="Log scale: each step up the axis is about ten times larger, so years of very high "
+                             "inflation don't flatten the rest; deflation (below 0) is mirrored below the zero line."),
+            series_spec(trend_chart, {"Unemployment": "WB:SL.UEM.TOTL.ZS"}, t, data, {},
+                        "Unemployment rate", "% of labor force (modelled ILO estimate)", y_suffix="%", hline_zero=True),
         ],
         [
             # Fiscal block. The gap between the two lines is the deficit or surplus.
-            extra_spec(trend_chart, {"Revenue": "IMF:GGR_NGDP", "Expenditure": "IMF:GGX_NGDP"}, t, xdf,
-                       {"Revenue": c[0], "Expenditure": c[1]},
-                       "Government revenue and expenditure", "% of GDP (general government)", **pct),
-            extra_spec(trend_chart, {"Budget balance": "IMF:GGXCNL_NGDP"}, t, xdf, {},
-                       "Government budget balance", "% of GDP (net lending/borrowing)", y_suffix="%", y_format=",.1f",
-                       y_mid=0),
-            extra_spec(trend_chart, {"Government debt": "IMF:GGXWDG_NGDP"}, t, xdf, {},
-                       "General government gross debt", "% of GDP", **pct),
+            series_spec(trend_chart, {"Revenue": "IMF:GGR_NGDP", "Expenditure": "IMF:GGX_NGDP"}, t, data,
+                        {"Revenue": c[0], "Expenditure": c[1]},
+                        "Government revenue and expenditure", "% of GDP (general government)", **pct),
+            series_spec(trend_chart, {"Budget balance": "IMF:GGXCNL_NGDP"}, t, data, {},
+                        "Government budget balance", "% of GDP (net lending/borrowing)", y_suffix="%", y_format=",.1f",
+                        y_mid=0),
+            series_spec(trend_chart, {"Government debt": "IMF:GGXWDG_NGDP"}, t, data, {},
+                        "General government gross debt", "% of GDP", **pct),
         ],
         [
             # External block: the whole economy's position, not a fiscal indicator
-            extra_spec(trend_chart, {"Current account": "IMF:BCA_NGDPD"}, t, xdf, {},
-                       "Current account balance", "% of GDP", y_suffix="%", y_format=",.1f", y_mid=0),
-            extra_spec(trend_chart, {"FDI inflows": "WB:BX.KLT.DINV.WD.GD.ZS"}, t, xdf, {},
-                       "Foreign direct investment, net inflows", "% of GDP", y_suffix="%", y_format=",.1f",
-                       hline_zero=True),
-            extra_spec(trend_chart, {"Private credit": "WB:FS.AST.PRVT.GD.ZS"}, t, xdf, {},
-                       "Domestic credit to private sector", "% of GDP", **pct),
+            series_spec(trend_chart, {"Current account": "IMF:BCA_NGDPD"}, t, data, {},
+                        "Current account balance", "% of GDP", y_suffix="%", y_format=",.1f", y_mid=0),
+            series_spec(trend_chart, {"FDI inflows": "WB:BX.KLT.DINV.WD.GD.ZS"}, t, data, {},
+                        "Foreign direct investment, net inflows", "% of GDP", y_suffix="%", y_format=",.1f",
+                        hline_zero=True),
+            series_spec(trend_chart, {"Private credit": "WB:FS.AST.PRVT.GD.ZS"}, t, data, {},
+                        "Domestic credit to private sector", "% of GDP", **pct),
         ],
         [
-            extra_spec(trend_chart, {"Price level": "WB:PA.NUS.GDP.PLI"}, t, xdf, {},
-                       "Price level relative to the US", "price level index of GDP (US = 100)",
-                       y_format=",.1f", hline_zero=True, ref_line=(100, "US = 100")),
-            extra_spec(trend_chart, {"Net energy imports": "WB:EG.IMP.CONS.ZS"}, t, xdf, {},
-                       "Net energy imports", "% of energy use (negative = net exporter)", **pct),
+            series_spec(trend_chart, {"Price level": "WB:PA.NUS.GDP.PLI"}, t, data, {},
+                        "Price level relative to the US", "price level index of GDP (US = 100)",
+                        y_format=",.1f", hline_zero=True, ref_line=(100, "US = 100")),
+            series_spec(trend_chart, {"Net energy imports": "WB:EG.IMP.CONS.ZS"}, t, data, {},
+                        "Net energy imports", "% of energy use (negative = net exporter)", **pct),
         ],
         [
-            extra_spec(trend_chart, {"GDP": "WB:NY.GDP.MKTP.PP.KD"}, t, xdf, {},
-                       "GDP, PPP", gdp_unit, y_format=gdp_format, hline_zero=True),
+            series_spec(trend_chart, {"GDP": "WB:NY.GDP.MKTP.PP.KD"}, t, data, {},
+                        "GDP, PPP", gdp_unit, y_format=gdp_format, hline_zero=True),
             # Two charts side by side, not one per sector (user's decision, 2026-09-29): the gap between
             # agriculture's share of jobs and of output is the story. Lines,
             # not stacked bars, on a shared y-axis (user's decision, 2026-09-30).
-            extra_spec(trend_chart, {"Agriculture": "WB:NV.AGR.TOTL.ZS", "Industry": "WB:NV.IND.TOTL.ZS",
-                                           "Services": "WB:NV.SRV.TOTL.ZS"}, t, xdf, SECTOR_COLORS,
-                       "Output by sector", "value added, % of GDP", **sector),
-            extra_spec(trend_chart, {"Agriculture": "WB:SL.AGR.EMPL.ZS", "Industry": "WB:SL.IND.EMPL.ZS",
-                                           "Services": "WB:SL.SRV.EMPL.ZS"}, t, xdf, SECTOR_COLORS,
-                       "Employment by sector", "% of total employment", **sector),
+            series_spec(trend_chart, {"Agriculture": "WB:NV.AGR.TOTL.ZS", "Industry": "WB:NV.IND.TOTL.ZS",
+                                           "Services": "WB:NV.SRV.TOTL.ZS"}, t, data, SECTOR_COLORS,
+                        "Output by sector", "value added, % of GDP", **sector),
+            series_spec(trend_chart, {"Agriculture": "WB:SL.AGR.EMPL.ZS", "Industry": "WB:SL.IND.EMPL.ZS",
+                                           "Services": "WB:SL.SRV.EMPL.ZS"}, t, data, SECTOR_COLORS,
+                        "Employment by sector", "% of total employment", **sector),
         ],
     )
 
 
-def labour_charts(t: pd.DataFrame, xdf: pd.DataFrame) -> list[dict]:
+def labour_charts(t: pd.DataFrame, data: pd.DataFrame) -> list[dict]:
     """Who takes part in the labour market, which young people are left out, and what share of
     national income goes to workers (one row). All ILO modelled.
     Each chart's y-axis runs from 0 to the highest value any country reaches (user's decision,
     2026-09-30), so it is the same whichever country is selected, without a 0-100 scale's empty top."""
     def pct(code):
-        top = (global_extent(xdf, [code]) or (0, 100))[1]
+        top = (global_extent(data, [code]) or (0, 100))[1]
         return dict(y_suffix="%", y_format=",.1f", hline_zero=True, y_extent=(0, top))
     return [
-        extra_spec(trend_chart, {"Participation": "WB:SL.TLF.CACT.ZS"}, t, xdf, {},
-                   "Labour force participation rate", "% of population aged 15+", **pct("WB:SL.TLF.CACT.ZS")),
-        extra_spec(trend_chart, {"NEET rate": "ILO:NEET"}, t, xdf, {},
-                   "Youth not in employment, education or training", "% of youth aged 15–24", **pct("ILO:NEET")),
-        extra_spec(trend_chart, {"Labour income share": "ILO:LABOUR_SHARE"}, t, xdf, {},
-                   "Labour income share", "% of GDP", **pct("ILO:LABOUR_SHARE")),
+        series_spec(trend_chart, {"Participation": "WB:SL.TLF.CACT.ZS"}, t, data, {},
+                    "Labour force participation rate", "% of population aged 15+", **pct("WB:SL.TLF.CACT.ZS")),
+        series_spec(trend_chart, {"NEET rate": "ILO:NEET"}, t, data, {},
+                    "Youth not in employment, education or training", "% of youth aged 15–24", **pct("ILO:NEET")),
+        series_spec(trend_chart, {"Labour income share": "ILO:LABOUR_SHARE"}, t, data, {},
+                    "Labour income share", "% of GDP", **pct("ILO:LABOUR_SHARE")),
     ]
 
 
-def industry_charts(t: pd.DataFrame, xdf: pd.DataFrame) -> list[dict]:
+def industry_charts(t: pd.DataFrame, data: pd.DataFrame) -> list[dict]:
     """How much a country makes, how advanced it is, how much of what it sells abroad is
     manufactured, its overall productive know-how, and investment in new technology (SDG 9.2.1,
     9.b.1 and 9.5.1; order set by the user on 2026-09-29)."""
@@ -949,50 +932,50 @@ def industry_charts(t: pd.DataFrame, xdf: pd.DataFrame) -> list[dict]:
     eci = t["ECI:ECI"].dropna()
     eci_extent = (min(-ECI_SCALE, eci.min()), max(ECI_SCALE, eci.max())) if len(eci) else None
     return [
-        extra_spec(trend_chart, {"Manufacturing": "WB:NV.IND.MANF.ZS"}, t, xdf, {},
-                   "Manufacturing contribution to GDP", "% of GDP", **pct),
-        extra_spec(trend_chart, {"Medium & high-tech share": "WB:NV.MNF.TECH.ZS.UN"}, t, xdf, {},
-                   "Medium and high-tech manufacturing", "% of manufacturing value added", **pct),
-        extra_spec(trend_chart, {"Manufactured exports": "WB:TX.VAL.MANF.ZS.UN"}, t, xdf, {},
-                   "Manufactured exports", "% of total merchandise exports", **pct),
-        extra_spec(trend_chart, {"ECI": "ECI:ECI"}, t, xdf, {},
-                   "Economic Complexity Index", "relative to other countries (0 = world average)", y_mid=0,
-                   y_extent=eci_extent),
-        extra_spec(trend_chart, {"R&D expenditure": "WB:GB.XPD.RSDV.GD.ZS"}, t, xdf, {},
-                   "Research and development expenditure", "% of GDP", y_suffix="%", hline_zero=True),
+        series_spec(trend_chart, {"Manufacturing": "WB:NV.IND.MANF.ZS"}, t, data, {},
+                    "Manufacturing contribution to GDP", "% of GDP", **pct),
+        series_spec(trend_chart, {"Medium & high-tech share": "WB:NV.MNF.TECH.ZS.UN"}, t, data, {},
+                    "Medium and high-tech manufacturing", "% of manufacturing value added", **pct),
+        series_spec(trend_chart, {"Manufactured exports": "WB:TX.VAL.MANF.ZS.UN"}, t, data, {},
+                    "Manufactured exports", "% of total merchandise exports", **pct),
+        series_spec(trend_chart, {"ECI": "ECI:ECI"}, t, data, {},
+                    "Economic Complexity Index", "relative to other countries (0 = world average)", y_mid=0,
+                    y_extent=eci_extent),
+        series_spec(trend_chart, {"R&D expenditure": "WB:GB.XPD.RSDV.GD.ZS"}, t, data, {},
+                    "Research and development expenditure", "% of GDP", y_suffix="%", hline_zero=True),
     ]
 
 
-def climate_charts(t: pd.DataFrame, xdf: pd.DataFrame) -> list[dict]:
+def climate_charts(t: pd.DataFrame, data: pd.DataFrame) -> list[dict]:
     # ND-GAIN: y-axis from the lowest to the highest value of any country (user's decision, 2026-09-30):
     # 50 / 0.5 is not a meaningful midpoint for these scores, which mostly fall between ~30 and ~75.
     c = du.CATEGORICAL_COLORS
     return [
         # Section story (user's decision, 2026-09-30): emissions (per person, then total) -> how much
         # energy the economy uses -> how clean that energy is -> the land side -> climate risk.
-        extra_spec(trend_chart, {"GHG per capita": "WB:EN.GHG.ALL.PC.CE.AR5"}, t, xdf, {},
-                   "Greenhouse gas emissions per capita", "tonnes of CO₂-equivalent, excl. land use",
-                   hline_zero=True),
-        extra_spec(trend_chart, {"GHG emissions": "WB:EN.GHG.ALL.MT.CE.AR5"}, t, xdf, {},
-                   "Total greenhouse gas emissions", "million tonnes of CO₂-equivalent, excl. land use",
-                   y_format=",.1f", hline_zero=True),
+        series_spec(trend_chart, {"GHG per capita": "WB:EN.GHG.ALL.PC.CE.AR5"}, t, data, {},
+                    "Greenhouse gas emissions per capita", "tonnes of CO₂-equivalent, excl. land use",
+                    hline_zero=True),
+        series_spec(trend_chart, {"GHG emissions": "WB:EN.GHG.ALL.MT.CE.AR5"}, t, data, {},
+                    "Total greenhouse gas emissions", "million tonnes of CO₂-equivalent, excl. land use",
+                    y_format=",.1f", hline_zero=True),
         # Next to greenhouse gases: the two emission drivers of the Kaya decomposition (energy per unit
         # of GDP, emissions per unit of energy).
-        extra_spec(trend_chart, {"Energy intensity": "WB:EG.EGY.PRIM.PP.KD"}, t, xdf, {},
-                   "Energy intensity", "megajoules per constant 2021 PPP $ of GDP (lower = more efficient)",
-                   y_format=",.2f", hline_zero=True),
-        extra_spec(trend_chart, {"Renewable share": "WB:EG.FEC.RNEW.ZS"}, t, xdf, {},
-                   "Renewable energy share", "% of final energy consumption", y_suffix="%", y_format=",.1f",
-                   hline_zero=True, y_extent=(0, 100)),
-        extra_spec(trend_chart, {"Forest area": "WB:AG.LND.FRST.ZS"}, t, xdf, {},
-                   "Forest area", "% of land area", y_suffix="%", y_format=",.1f", hline_zero=True),
-        extra_spec(trend_chart, {"ND-GAIN index": "NDGAIN:GAIN"}, t, xdf, {},
-                   "ND-GAIN country index", "0–100 (higher = better prepared to climate change)",
-                   y_format=",.1f", y_extent=global_extent(xdf, ["NDGAIN:GAIN"])),
-        extra_spec(trend_chart, {"Vulnerability": "NDGAIN:VULNERABILITY", "Readiness": "NDGAIN:READINESS"},
-                   t, xdf, {"Vulnerability": c[0], "Readiness": c[1]},
-                   "Vulnerability and readiness to climate change", "ND-GAIN scores, 0–1", y_format=",.3f",
-                   y_extent=global_extent(xdf, ["NDGAIN:VULNERABILITY", "NDGAIN:READINESS"])),
+        series_spec(trend_chart, {"Energy intensity": "WB:EG.EGY.PRIM.PP.KD"}, t, data, {},
+                    "Energy intensity", "megajoules per constant 2021 PPP $ of GDP (lower = more efficient)",
+                    y_format=",.2f", hline_zero=True),
+        series_spec(trend_chart, {"Renewable share": "WB:EG.FEC.RNEW.ZS"}, t, data, {},
+                    "Renewable energy share", "% of final energy consumption", y_suffix="%", y_format=",.1f",
+                    hline_zero=True, y_extent=(0, 100)),
+        series_spec(trend_chart, {"Forest area": "WB:AG.LND.FRST.ZS"}, t, data, {},
+                    "Forest area", "% of land area", y_suffix="%", y_format=",.1f", hline_zero=True),
+        series_spec(trend_chart, {"ND-GAIN index": "NDGAIN:GAIN"}, t, data, {},
+                    "ND-GAIN country index", "0–100 (higher = better prepared to climate change)",
+                    y_format=",.1f", y_extent=global_extent(data, ["NDGAIN:GAIN"])),
+        series_spec(trend_chart, {"Vulnerability": "NDGAIN:VULNERABILITY", "Readiness": "NDGAIN:READINESS"},
+                    t, data, {"Vulnerability": c[0], "Readiness": c[1]},
+                    "Vulnerability and readiness to climate change", "ND-GAIN scores, 0–1", y_format=",.3f",
+                    y_extent=global_extent(data, ["NDGAIN:VULNERABILITY", "NDGAIN:READINESS"])),
     ]
 
 
@@ -1003,29 +986,29 @@ def index_extent(t: pd.DataFrame, codes: list[str]) -> tuple[float, float] | Non
     return (float(values.min()), float(values.max())) if len(values) else None
 
 
-def infrastructure_charts(t: pd.DataFrame, xdf: pd.DataFrame) -> list[dict]:
+def infrastructure_charts(t: pd.DataFrame, data: pd.DataFrame) -> list[dict]:
     """Access to the internet and to basic services (all WDI; the services are modelled from
-    household surveys, see xs.ESTIMATE_NOTES). Fixed 0-100% axes (user's decision, 2026-09-30): the
+    household surveys, see ds.ESTIMATE_NOTES). Fixed 0-100% axes (user's decision, 2026-09-30): the
     question is how close a country is to universal access, which a data-fitted axis would hide."""
     c = du.CATEGORICAL_COLORS
     pct = dict(y_suffix="%", y_format=",.1f", hline_zero=True, y_extent=(0, 100))
     return [
-        extra_spec(trend_chart, {"Drinking water": "WB:SH.H2O.BASW.ZS", "Sanitation": "WB:SH.STA.BASS.ZS",
-                                 "Hygiene": "WB:SH.STA.HYGN.ZS"}, t, xdf,
-                   {"Drinking water": c[0], "Sanitation": c[1], "Hygiene": c[2]},
-                   "Basic drinking water, sanitation and hygiene", "% of population with at least basic services",
-                   **pct),
+        series_spec(trend_chart, {"Drinking water": "WB:SH.H2O.BASW.ZS", "Sanitation": "WB:SH.STA.BASS.ZS",
+                                 "Hygiene": "WB:SH.STA.HYGN.ZS"}, t, data,
+                    {"Drinking water": c[0], "Sanitation": c[1], "Hygiene": c[2]},
+                    "Basic drinking water, sanitation and hygiene", "% of population with at least basic services",
+                    **pct),
         # Together on one scale: the gap between them is the story --
         # households with power that still cook with wood or charcoal.
-        extra_spec(trend_chart, {"Electricity": "WB:EG.ELC.ACCS.ZS", "Clean cooking": "WB:EG.CFT.ACCS.ZS"}, t, xdf,
-                   {"Electricity": c[0], "Clean cooking": c[1]},
-                   "Access to electricity and clean cooking", "% of population", **pct),
-        extra_spec(trend_chart, {"Internet users": "WB:IT.NET.USER.ZS"}, t, xdf, {},
-                   "Internet users", "% of population", **pct),
+        series_spec(trend_chart, {"Electricity": "WB:EG.ELC.ACCS.ZS", "Clean cooking": "WB:EG.CFT.ACCS.ZS"}, t, data,
+                    {"Electricity": c[0], "Clean cooking": c[1]},
+                    "Access to electricity and clean cooking", "% of population", **pct),
+        series_spec(trend_chart, {"Internet users": "WB:IT.NET.USER.ZS"}, t, data, {},
+                    "Internet users", "% of population", **pct),
     ]
 
 
-def living_standards_charts(t: pd.DataFrame, xdf: pd.DataFrame) -> list[dict]:
+def living_standards_charts(t: pd.DataFrame, data: pd.DataFrame) -> list[dict]:
     """Average income, the typical person's (the median), then how it is shared (inequality), poverty, and how
     people rate their lives (happiness). GDP per capita measures production, GNI per capita
     residents' income (GDP plus net income from abroad): they differ strongly for Ireland,
@@ -1033,53 +1016,53 @@ def living_standards_charts(t: pd.DataFrame, xdf: pd.DataFrame) -> list[dict]:
     on one shared y-axis range so the two can be compared at a glance."""
     extent = index_extent(t, ["WB:NY.GDP.PCAP.PP.KD", "WB:NY.GNP.PCAP.PP.KD"])
     return [
-        extra_spec(trend_chart, {"GDP per capita": "WB:NY.GDP.PCAP.PP.KD"}, t, xdf, {},
-                   "GDP per capita, PPP", "constant 2021 international $", y_format=",.0f", hline_zero=True,
-                   y_extent=extent),
-        extra_spec(trend_chart, {"GNI per capita": "WB:NY.GNP.PCAP.PP.KD"}, t, xdf, {},
-                   "GNI per capita, PPP", "constant 2021 international $", y_format=",.0f", hline_zero=True,
-                   y_extent=extent),
+        series_spec(trend_chart, {"GDP per capita": "WB:NY.GDP.PCAP.PP.KD"}, t, data, {},
+                    "GDP per capita, PPP", "constant 2021 international $", y_format=",.0f", hline_zero=True,
+                    y_extent=extent),
+        series_spec(trend_chart, {"GNI per capita": "WB:NY.GNP.PCAP.PP.KD"}, t, data, {},
+                    "GNI per capita, PPP", "constant 2021 international $", y_format=",.0f", hline_zero=True,
+                    y_extent=extent),
         # The typical person's living standard, often a fraction of GDP per capita (pulled up by the rich)
-        extra_spec(trend_chart, {"Median": "PIP:MEDIAN"}, t, xdf, {},
-                   "Median income or consumption", "2021 PPP $ per person per day", y_format=",.2f",
-                   hline_zero=True),
-        extra_spec(trend_chart, {"Gini index": "SWIID:GINI_DISP"}, t, xdf, {},
-                   "Income inequality", "Gini index of disposable income, 0–100", y_format=",.1f", hline_zero=True),
-        extra_spec(trend_chart, {"Poverty rate": "PIP:POV_3_00"}, t, xdf, {},
-                   "Poverty at $3.00 a day", "% of population (2021 PPP)", y_suffix="%", y_format=",.1f",
-                   hline_zero=True, ref_line=POVERTY_LINE, note=POVERTY_TARGET_NOTE),
-        extra_spec(trend_chart, {"Life evaluation": "WHR:LADDER"}, t, xdf, {},
-                   "Happiness: life evaluation", "Cantril ladder, 0–10 (3-year average)",
-                   y_format=",.2f", hline_zero=True),
+        series_spec(trend_chart, {"Median": "PIP:MEDIAN"}, t, data, {},
+                    "Median income or consumption", "2021 PPP $ per person per day", y_format=",.2f",
+                    hline_zero=True),
+        series_spec(trend_chart, {"Gini index": "SWIID:GINI_DISP"}, t, data, {},
+                    "Income inequality", "Gini index of disposable income, 0–100", y_format=",.1f", hline_zero=True),
+        series_spec(trend_chart, {"Poverty rate": "PIP:POV_3_00"}, t, data, {},
+                    "Poverty at $3.00 a day", "% of population (2021 PPP)", y_suffix="%", y_format=",.1f",
+                    hline_zero=True, ref_line=POVERTY_LINE, note=POVERTY_TARGET_NOTE),
+        series_spec(trend_chart, {"Life evaluation": "WHR:LADDER"}, t, data, {},
+                    "Happiness: life evaluation", "Cantril ladder, 0–10 (3-year average)",
+                    y_format=",.2f", hline_zero=True),
     ]
 
 
-def education_charts(t: pd.DataFrame, xdf: pd.DataFrame) -> list[dict]:
+def education_charts(t: pd.DataFrame, data: pd.DataFrame) -> list[dict]:
     """Spending, attainment, then enrollment. Mean years of schooling (adults 25+, the stock of
     education, changes slowly) and expected years (a child entering school now, if current
     enrollment rates persist) share a chart: the gap shows how fast education levels are rising."""
     c = du.CATEGORICAL_COLORS
     pct = dict(y_suffix="%", y_format=",.1f", hline_zero=True)
     return [
-        extra_spec(trend_chart, {"Education spending": "WB:SE.XPD.TOTL.GD.ZS"}, t, xdf, {},
-                   "Government expenditure on education", "% of GDP", ref_band=EDUCATION_BAND, **pct),
-        extra_spec(trend_chart, {"Expected (school entrants)": "UNDP:EYS", "Mean (adults 25+)": "UNDP:MYS"}, t, xdf,
-                   {"Expected (school entrants)": c[0], "Mean (adults 25+)": c[1]},
-                   "Mean and expected years of schooling", "years", y_format=",.1f", hline_zero=True),
-        extra_spec(trend_chart, {"Tertiary enrollment": "WB:SE.TER.ENRR"}, t, xdf, {},
-                   "Tertiary school enrollment", "gross enrollment ratio, %", **pct),
+        series_spec(trend_chart, {"Education spending": "WB:SE.XPD.TOTL.GD.ZS"}, t, data, {},
+                    "Government expenditure on education", "% of GDP", ref_band=EDUCATION_BAND, **pct),
+        series_spec(trend_chart, {"Expected (school entrants)": "UNDP:EYS", "Mean (adults 25+)": "UNDP:MYS"}, t, data,
+                    {"Expected (school entrants)": c[0], "Mean (adults 25+)": c[1]},
+                    "Mean and expected years of schooling", "years", y_format=",.1f", hline_zero=True),
+        series_spec(trend_chart, {"Tertiary enrollment": "WB:SE.TER.ENRR"}, t, data, {},
+                    "Tertiary school enrollment", "gross enrollment ratio, %", **pct),
     ]
 
 
-def healthcare_charts(t: pd.DataFrame, xdf: pd.DataFrame) -> list[dict]:
+def healthcare_charts(t: pd.DataFrame, data: pd.DataFrame) -> list[dict]:
     """How much a country spends on health, and who pays. Both WDI,
     from the WHO Global Health Expenditure Database (about a 2-year lag)."""
     pct = dict(y_suffix="%", y_format=",.1f", hline_zero=True)
     return [
-        extra_spec(trend_chart, {"Health spending": "WB:SH.XPD.CHEX.GD.ZS"}, t, xdf, {},
-                   "Current health expenditure", "% of GDP", **pct),
-        extra_spec(trend_chart, {"Out-of-pocket spending": "WB:SH.XPD.OOPC.CH.ZS"}, t, xdf, {},
-                   "Out-of-pocket health spending", "% of current health expenditure", **pct),
+        series_spec(trend_chart, {"Health spending": "WB:SH.XPD.CHEX.GD.ZS"}, t, data, {},
+                    "Current health expenditure", "% of GDP", **pct),
+        series_spec(trend_chart, {"Out-of-pocket spending": "WB:SH.XPD.OOPC.CH.ZS"}, t, data, {},
+                    "Out-of-pocket health spending", "% of current health expenditure", **pct),
     ]
 
 
@@ -1091,14 +1074,13 @@ CLIMATE_SOURCES = ["WDI", "NDGAIN"]
 
 
 @st.fragment  # a widget in this tab reruns only this tab, not the other one
-def tab_trends(df: pd.DataFrame, countries: pd.DataFrame, xdf: pd.DataFrame, errors: dict[str, str]):
-    """errors: {source key: message} for the failed sources, the population data's included."""
-    options = trends_entity_options(df, countries, xdf)
+def tab_trends(data: pd.DataFrame, countries: pd.DataFrame, errors: dict[str, str]):
+    """errors: {source key: message} for the failed sources."""
+    options = trends_entity_options(data, countries)
     codes = list(options)
     entity = st.selectbox("Country or region", options=codes, format_func=options.get, key="trends_entity",
                           index=codes.index(DEFAULT_ENTITY) if DEFAULT_ENTITY in codes else 0)
-    t = du.trends_data(df, entity)
-    xt = du.extra_trends_data(xdf, entity)
+    t = du.trends_data(data, entity)
     updates = load_source_updates()
     entity_header(options[entity], countries, entity)
     shared_legend([], {}, forecast_key=True)
@@ -1106,16 +1088,16 @@ def tab_trends(df: pd.DataFrame, countries: pd.DataFrame, xdf: pd.DataFrame, err
     # A section with no data for this entity is skipped. If that's because its source failed to
     # load, the warning goes here at the top instead, so a failure never goes unnoticed.
     top_warnings, skipped_sources = st.container(), []
-    sections = [  # (header, charts, extra sources behind them)
-        ("Economics", economics_charts(xt, xdf), ECONOMICS_SOURCES),
-        ("Labour market", labour_charts(xt, xdf), LABOUR_SOURCES),
-        ("Industry & innovation", industry_charts(xt, xdf), ["WDI", "ECI"]),
-        ("Living standards", living_standards_charts(xt, xdf), ["WDI", "SWIID", "PIP", "WHR"]),
-        ("Demographics", demographics_charts(t), [du.POPULATION_SOURCE]),
-        ("Climate", climate_charts(xt, xdf), CLIMATE_SOURCES),
-        ("Infrastructure & basic services", infrastructure_charts(xt, xdf), ["WDI"]),
-        ("Education", education_charts(xt, xdf), ["WDI", "UNDP"]),
-        ("Healthcare", healthcare_charts(xt, xdf), ["WDI"]),
+    sections = [  # (header, charts, sources behind them)
+        ("Economics", economics_charts(t, data), ECONOMICS_SOURCES),
+        ("Labour market", labour_charts(t, data), LABOUR_SOURCES),
+        ("Industry & innovation", industry_charts(t, data), ["WDI", "ECI"]),
+        ("Living standards", living_standards_charts(t, data), ["WDI", "SWIID", "PIP", "WHR"]),
+        ("Demographics", demographics_charts(t, data), [du.POPULATION_SOURCE]),
+        ("Climate", climate_charts(t, data), CLIMATE_SOURCES),
+        ("Infrastructure & basic services", infrastructure_charts(t, data), ["WDI"]),
+        ("Education", education_charts(t, data), ["WDI", "UNDP"]),
+        ("Healthcare", healthcare_charts(t, data), ["WDI"]),
     ]
     for header, charts, sources in sections:
         if not render_trend_section(header, charts, options[entity], errors, sources,
@@ -1161,40 +1143,40 @@ _POP_EDGES = [0, 1e5, 3e5, 1e6, 3e6, 1e7, 3e7, 1e8, 3e8, 1e9, np.inf]
 # the chart explaining uneven bins. vlines: [(value, label)] reference lines, band: (low, high, label)
 # a reference range, both on bin edges and on the indicator's Trends chart too (ref_line / ref_band);
 # note: a line for the chart's footer. Grouped by section like the Trends tab (DISTRIBUTION_SECTIONS);
-# series is a load_data() code or a du.EXTRA_SERIES one (e.g. "IMF:NGDP_RPCH").
+# series is a du.SERIES code (e.g. "POP:SP.POP.TOTL", "IMF:NGDP_RPCH") or a derived one (du.NATURAL_CHANGE_RATE).
 DEPENDENTS_UNIT = "# dependents per 100 working-age people"
 
 DEMOGRAPHIC_DISTRIBUTIONS: dict[str, dict] = {
     "Total population": dict(
-        series="SP.POP.TOTL", unit="people", fmt=",.0f", map_scale="log",
+        series="POP:SP.POP.TOTL", unit="people", fmt=",.0f", map_scale="log",
         bins_note="Bins widen with the values (roughly ×3 each step), since countries differ by orders "
                   "of magnitude on this indicator.",
         bins=("edges", _POP_EDGES, ["< 100k"] + _edge_labels(_POP_EDGES, _short_count)[1:])),
     "Annual population growth rate": dict(
-        series="SP.POP.GROW", unit="percent", fmt=",.2f", suffix="%", bins=("width", 0.5, "clip_tails"), zero_mid=True),
-    "Birth rate": dict(series="SP.DYN.CBRT.IN", unit="births per 1,000 population", fmt=",.1f", bins=("width", 2)),
-    "Death rate": dict(series="SP.DYN.CDRT.IN", unit="deaths per 1,000 population", fmt=",.1f", bins=("width", 1)),
+        series="POP:SP.POP.GROW", unit="percent", fmt=",.2f", suffix="%", bins=("width", 0.5, "clip_tails"), zero_mid=True),
+    "Birth rate": dict(series="POP:SP.DYN.CBRT.IN", unit="births per 1,000 population", fmt=",.1f", bins=("width", 2)),
+    "Death rate": dict(series="POP:SP.DYN.CDRT.IN", unit="deaths per 1,000 population", fmt=",.1f", bins=("width", 1)),
     "Fertility rate": dict(
-        series="SP.DYN.TFRT.IN", unit="live births per woman", fmt=",.2f", bins=("width", 0.1),
+        series="POP:SP.DYN.TFRT.IN", unit="live births per woman", fmt=",.2f", bins=("width", 0.1),
         vlines=[REPLACEMENT_LINE]),
-    "Under-5 mortality rate": dict(series="SH.DYN.MORT", unit="deaths per 1,000 live births", fmt=",.1f",
+    "Under-5 mortality rate": dict(series="POP:SH.DYN.MORT", unit="deaths per 1,000 live births", fmt=",.1f",
                                    bins=("width", 5), vlines=[U5_MORTALITY_LINE]),  # 25 on a bin edge
     "Children population share (0–14 years old)": dict(
-        series="SP.POP.0014.TO.ZS", unit="percent", fmt=",.1f", suffix="%", bins=("width", 2)),
+        series="POP:SP.POP.0014.TO.ZS", unit="percent", fmt=",.1f", suffix="%", bins=("width", 2)),
     "Working age population share (15–64 years old)": dict(
-        series="SP.POP.1564.TO.ZS", unit="percent", fmt=",.1f", suffix="%", bins=("width", 2)),
+        series="POP:SP.POP.1564.TO.ZS", unit="percent", fmt=",.1f", suffix="%", bins=("width", 2)),
     "Elderly population share (65+ years old)": dict(
-        series="SP.POP.65UP.TO.ZS", unit="percent", fmt=",.1f", suffix="%", bins=("width", 1)),
-    "Age dependency ratio, Total": dict(series="SP.POP.DPND", unit=DEPENDENTS_UNIT, fmt=",.1f",
+        series="POP:SP.POP.65UP.TO.ZS", unit="percent", fmt=",.1f", suffix="%", bins=("width", 1)),
+    "Age dependency ratio, Total": dict(series="POP:SP.POP.DPND", unit=DEPENDENTS_UNIT, fmt=",.1f",
                                        bins=("width", 5)),
-    "Age dependency ratio, Old": dict(series="SP.POP.DPND.OL", unit=DEPENDENTS_UNIT, fmt=",.1f",
+    "Age dependency ratio, Old": dict(series="POP:SP.POP.DPND.OL", unit=DEPENDENTS_UNIT, fmt=",.1f",
                                       bins=("width", 2)),
-    "Age dependency ratio, Young": dict(series="SP.POP.DPND.YG", unit=DEPENDENTS_UNIT, fmt=",.1f",
+    "Age dependency ratio, Young": dict(series="POP:SP.POP.DPND.YG", unit=DEPENDENTS_UNIT, fmt=",.1f",
                                         bins=("width", 5)),
-    "Life expectancy at birth, Total": dict(series="SP.DYN.LE00.IN", unit="years", fmt=",.1f", bins=("width", 1)),
-    "Life expectancy at birth, Female": dict(series="SP.DYN.LE00.FE.IN", unit="years", fmt=",.1f",
+    "Life expectancy at birth, Total": dict(series="POP:SP.DYN.LE00.IN", unit="years", fmt=",.1f", bins=("width", 1)),
+    "Life expectancy at birth, Female": dict(series="POP:SP.DYN.LE00.FE.IN", unit="years", fmt=",.1f",
                                              bins=("width", 1)),
-    "Life expectancy at birth, Male": dict(series="SP.DYN.LE00.MA.IN", unit="years", fmt=",.1f", bins=("width", 1)),
+    "Life expectancy at birth, Male": dict(series="POP:SP.DYN.LE00.MA.IN", unit="years", fmt=",.1f", bins=("width", 1)),
     "Natural population change rate": dict(
         series=du.NATURAL_CHANGE_RATE, unit="people per 1,000 population", fmt=",.1f",
         bins=("width", 2), zero_mid=True),
@@ -1367,8 +1349,9 @@ CLIMATE_DISTRIBUTIONS: dict[str, dict] = {
 # Series charted in Trends but deliberately not in Distributions: the sector shares
 # left to the single-country charts. (The official exchange rate was
 # removed from the app on 2026-09-29, user's decision: its levels aren't comparable across countries;
-# the price level relative to the US covers the cross-country view.)
-TRENDS_ONLY_SERIES = {"WB:SL.IND.EMPL.ZS", "WB:NV.SRV.TOTL.ZS", "WB:SL.SRV.EMPL.ZS"}
+# the price level relative to the US covers the cross-country view.) Net migration counts too:
+# Distributions compares countries by the net migration rate (du.NET_MIGRATION_RATE) instead.
+TRENDS_ONLY_SERIES = {"WB:SL.IND.EMPL.ZS", "WB:NV.SRV.TOTL.ZS", "WB:SL.SRV.EMPL.ZS", du.NET_MIGRATION}
 
 # Same sections, in the same order, as the Trends tab.
 DISTRIBUTION_SECTIONS: dict[str, dict[str, dict]] = {
@@ -1908,7 +1891,7 @@ def countries_per_year(wide: pd.DataFrame) -> pd.Series:
 def default_years(counts: pd.Series, split: float,
                   min_countries: int = MIN_DEFAULT_COUNTRIES) -> tuple[int, int]:
     """An indicator's default slider years, from its countries-per-year `counts` (years with data
-    only) and its projection split (series_split): the first year with at least `min_countries`
+    only) and its projection split (du.series_split): the first year with at least `min_countries`
     values -> the last observed (year < split) year with that many. Without such a year, the first
     year with data / the last observed year (any year if none is observed) instead, each on its own;
     a start that would come after the end also takes the first year with data."""
@@ -2011,31 +1994,29 @@ def first_available_view(has_data, views=DEFAULT_DIST_VIEWS) -> tuple[str, str]:
     return next((view for view in views if has_data(*view)), views[0])
 
 
-def initial_dist_view(df: pd.DataFrame, countries: pd.DataFrame, xdf: pd.DataFrame,
-                      errors: dict[str, str]) -> tuple[str, str]:
+def initial_dist_view(data: pd.DataFrame, countries: pd.DataFrame, errors: dict[str, str]) -> tuple[str, str]:
     """The Distributions tab's initial view: the first DEFAULT_DIST_VIEWS entry whose source
     loaded and whose series has at least one year of country data."""
     def has_data(section, label):
         try:
             series = DISTRIBUTION_SECTIONS[section][label]["series"]
-            extra = series in du.EXTRA_SERIES
-            if (xs.source_of(series) if extra else du.POPULATION_SOURCE) in errors:
+            if ds.source_of(series) in errors:
                 return False
-            return len(du.country_indicator_wide(xdf if extra else df, countries, series).columns) > 0
+            return len(du.country_indicator_wide(data, countries, series).columns) > 0
         except Exception:  # never let the choice of a default view break the tab
             return False
     return first_available_view(has_data)
 
 
 @st.fragment  # a widget in this tab reruns only this tab, not the other one
-def tab_distributions(df: pd.DataFrame, countries: pd.DataFrame, xdf: pd.DataFrame, errors: dict[str, str]):
+def tab_distributions(data: pd.DataFrame, countries: pd.DataFrame, errors: dict[str, str]):
     # Button rows (segmented controls) rather than radio buttons; required=True keeps exactly one
     # option selected, as a radio does. Buttons show the section names.
     sections = list(DISTRIBUTION_SECTIONS)
     # The initial view is picked once per session, so later runs (or a refresh) never move the
     # defaults under a choice the user has made.
     if DIST_INITIAL_VIEW not in st.session_state:
-        st.session_state[DIST_INITIAL_VIEW] = initial_dist_view(df, countries, xdf, errors)
+        st.session_state[DIST_INITIAL_VIEW] = initial_dist_view(data, countries, errors)
     initial_section, initial_label = st.session_state[DIST_INITIAL_VIEW]
     section = st.segmented_control("Indicator Group", sections, default=initial_section, required=True,
                                    key="dist_section")
@@ -2047,19 +2028,19 @@ def tab_distributions(df: pd.DataFrame, countries: pd.DataFrame, xdf: pd.DataFra
     label = st.selectbox("Indicator", labels, key=f"dist_indicator_{section}",
                          index=labels.index(default_label) if default_label in labels else 0)
     spec = DISTRIBUTION_INDICATORS[label]
-    extra = spec["series"] in du.EXTRA_SERIES
-    source = du.EXTRA_SOURCES[xs.source_of(spec["series"])] if extra else POP_SOURCE
-    wide = du.country_indicator_wide(xdf if extra else df, countries, spec["series"])
+    source_key = ds.source_of(spec["series"])
+    source = du.SOURCE_LABELS[source_key]
+    wide = du.country_indicator_wide(data, countries, spec["series"])
     years = [int(y) for y in wide.columns]
     if not years:
-        failed = (xs.source_of(spec["series"]) if extra else du.POPULATION_SOURCE) in errors
+        failed = source_key in errors
         st.info(f"No country data loaded for “{label}”"
                 + (f" (couldn't reach {source})" if failed else "") + ". Click **Refresh data** in the sidebar.")
         return
     # Defaults: the first year with values for MIN_DEFAULT_COUNTRIES countries -> the last observed
     # (not projected) year with as many (default_years has the fallbacks). The slider and fields
     # still span every year with data (country_indicator_wide drops empty ones).
-    split = series_split(spec["series"], xdf)
+    split = du.series_split(spec["series"], data)
     default_a, default_b = default_years(countries_per_year(wide), split)
     # A numeric slider, so its scale is real years (st.select_slider spaces options evenly: the
     # 5-yearly forecasts 2030, 2035, ... would sit one step apart). Years without data (e.g.
@@ -2118,7 +2099,7 @@ def tab_distributions(df: pd.DataFrame, countries: pd.DataFrame, xdf: pd.DataFra
         st.plotly_chart(distribution_bars(dist, spec["bins"], label, ya, yb, x_title=sentence_case(unit),
                                           x_suffix=suffix, vlines=spec.get("vlines"), band=spec.get("band")),
                         width="stretch")
-        notes = [xs.ESTIMATE_NOTES.get(spec["series"]), spec.get("bins_note"), spec.get("note"),
+        notes = [ds.ESTIMATE_NOTES.get(spec["series"]), spec.get("bins_note"), spec.get("note"),
                  f"Values from {int(split + 0.5)} on are projections." if max(ya, yb) > split else None]
         source_footer(indent=TREND_TEXT_INDENT, note=" ".join(n for n in notes if n) or None, source=source)
 
@@ -2193,7 +2174,7 @@ def tab_distributions(df: pd.DataFrame, countries: pd.DataFrame, xdf: pd.DataFra
                                            key=f"dist_box_mean_{label}") == "Show"
     st.plotly_chart(distribution_boxes(stats, outliers, label, unit, split=split, log=log, fmt=fmt, suffix=suffix,
                                        fit=fit, show_mean=show_mean), width="stretch")
-    notes = [xs.ESTIMATE_NOTES.get(spec["series"]),
+    notes = [ds.ESTIMATE_NOTES.get(spec["series"]),
              f"Values from {int(split + 0.5)} on are projections." if stats.index.max() > split else None,
              (f"{hidden} {'country' if hidden == 1 else 'countries'} with a value of 0 in some years "
               f"{'is' if hidden == 1 else 'are'} not shown for those years (log scale).") if hidden else None]
@@ -2203,16 +2184,6 @@ def tab_distributions(df: pd.DataFrame, countries: pd.DataFrame, xdf: pd.DataFra
 # --------------------------------------------------------------------------
 # Main
 # --------------------------------------------------------------------------
-
-def load_extras() -> tuple[pd.DataFrame, dict[str, str]]:
-    """The sources behind every section but Demographics (du.load_extra_data). Never stops the app: a failed source only
-    empties its own charts, with a warning in its section."""
-    try:
-        with st.spinner("Loading economic and other indicators -- first run can take up to a minute..."):
-            return du.load_extra_data()
-    except Exception as exc:  # noqa: BLE001 -- load_extra_data reports per source; this is a last resort
-        return pd.DataFrame(columns=xs.SCHEMA), {s: f"{type(exc).__name__}: {exc}" for s in du.EXTRA_SOURCES}
-
 
 def load_source_updates() -> dict[str, dt.date | None]:
     """Each source's release date (du.source_updates), or none at all if that fails: a missing date
@@ -2235,7 +2206,7 @@ def main():
         "and who climbed or fell in the global ranking."
     )
 
-    df, countries, pop_errors = load_population()
+    countries, country_errors = load_countries()
 
     with st.sidebar:
         st.header("About")
@@ -2260,18 +2231,18 @@ def main():
             st.cache_data.clear()
             st.rerun()
 
-    xdf, x_errors = load_extras()
-    errors = {**x_errors, **pop_errors}  # the population data fails like any other source
-    stop_if_nothing_loaded(errors, xdf)
-    population_warnings(errors, countries)
+    data, data_errors = load_data()
+    errors = {**data_errors, **country_errors}
+    stop_if_nothing_loaded(errors, data)
+    countries_warning(errors, countries)
 
     # Distributions first, so the app opens on it (user, 2026-10-11). Each tab is an st.fragment:
     # a full run (page load, "Refresh data") still builds both, since st.tabs isn't lazy.
     dist_tab, trends_tab = st.tabs(["Period & Country Comparisons", "Country Profiles"])
     with dist_tab:
-        tab_distributions(df, countries, xdf, errors)
+        tab_distributions(data, countries, errors)
     with trends_tab:
-        tab_trends(df, countries, xdf, errors)
+        tab_trends(data, countries, errors)
 
 
 if __name__ == "__main__":

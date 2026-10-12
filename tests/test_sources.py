@@ -1,10 +1,10 @@
 """
-The Economics/Other data sources (extra_sources.py, data_utils.load_extra_data):
+The data sources (sources.py) and their shared loader (data_utils.load_data):
 
 1. Country dictionary: source codes and name variants map to one code; other sources' own
    groups ("North America" the continent, IMF groups) are dropped, never matched to WB aggregates.
 2. A failing source doesn't take the app down: only its own charts go empty, with a visible
-   warning, while the population data and the other sources still load.
+   warning, while the other sources (the population data among them) still load.
 3. Each source has its own on-disk cache: a second process start reads it instead of the
    network, and a cached source missing a series (written by an older app version) is refetched.
 4. Release dates ("Last updated" under the Trends charts): a date that can't be read leaves the
@@ -20,7 +20,7 @@ import pandas as pd
 
 import country_dict as cd
 import data_utils as du
-import extra_sources as xs
+import sources as ds
 from test_app2 import EXPECTED_RELEASES, fake_get
 
 # --- 1. Country dictionary ---
@@ -44,20 +44,20 @@ IMF_DOWN = "simulated: IMF blocks scripted downloads"
 
 
 def imf_down_get(url, *args, **kwargs):
-    if url.startswith(xs.IMF_SDMX_URL) or url.startswith(xs.IMF_DATAMAPPER_URL):  # both IMF routes
+    if url.startswith(ds.IMF_SDMX_URL) or url.startswith(ds.IMF_DATAMAPPER_URL):  # both IMF routes
         raise ConnectionError(IMF_DOWN)
     return fake_get(url, *args, **kwargs)
 
 
 du.clear_disk_cache()
-du.load_extra_data.clear()
+du.load_data.clear()
 with patch.object(du._SESSION, "get", side_effect=imf_down_get):
-    xdf, errors = du.load_extra_data()
+    data, errors = du.load_data()
     assert set(errors) == {"IMF"} and IMF_DOWN in errors["IMF"], errors
-    assert not xdf["series_code"].str.startswith("IMF:").any()
-    assert set(du.EXTRA_SERIES) - set(xs.series_of("IMF")) <= set(xdf["series_code"])
-    assert not du._extra_cache_file("IMF").exists()  # a failure isn't written to disk...
-    assert du._extra_cache_file("WDI").exists()  # ...successes are
+    assert not data["series_code"].str.startswith("IMF:").any()
+    assert set(du.SERIES) - set(ds.series_of("IMF")) <= set(data["series_code"])
+    assert not du._source_cache_file("IMF").exists()  # a failure isn't written to disk...
+    assert du._source_cache_file("WDI").exists()  # ...successes are
 
     from streamlit.testing.v1 import AppTest
     at = AppTest.from_file(_pathfix.APP_PATH, default_timeout=120)
@@ -94,25 +94,25 @@ def counting_get(url, *args, **kwargs):
 
 
 du.clear_disk_cache()
-du.load_extra_data.clear()
+du.load_data.clear()
 with patch.object(du._SESSION, "get", side_effect=counting_get):
-    xdf1, errors1 = du.load_extra_data()
+    data1, errors1 = du.load_data()
     assert errors1 == {} and calls, errors1
     n_first = len(calls)
 
-    du.load_extra_data.clear()  # a process restart: memory cache gone, disk cache still there
-    xdf2, _ = du.load_extra_data()
+    du.load_data.clear()  # a process restart: memory cache gone, disk cache still there
+    data2, _ = du.load_data()
     assert len(calls) == n_first, calls[n_first:]
-    assert len(xdf2) == len(xdf1)
+    assert len(data2) == len(data1)
 
     # An older app version's ND-GAIN cache without vulnerability/readiness: refetched, not trusted.
-    ndgain_file = du._extra_cache_file("NDGAIN")
+    ndgain_file = du._source_cache_file("NDGAIN")
     stale = pd.read_parquet(ndgain_file)
     stale[stale["series_code"] == "NDGAIN:GAIN"].to_parquet(ndgain_file, index=False)
-    du.load_extra_data.clear()
-    xdf3, _ = du.load_extra_data()
-    assert calls[n_first:] == [xs.NDGAIN_URL], calls[n_first:]  # only the stale source
-    assert set(xs.series_of("NDGAIN")) <= set(xdf3["series_code"])
+    du.load_data.clear()
+    data3, _ = du.load_data()
+    assert calls[n_first:] == [ds.NDGAIN_URL], calls[n_first:]  # only the stale source
+    assert set(ds.series_of("NDGAIN")) <= set(data3["series_code"])
 du.clear_disk_cache()
 print("OK: per-source disk cache, with the completeness self-heal")
 
@@ -123,7 +123,7 @@ GITHUB_DOWN = "simulated: GitHub API rate limit exceeded"
 
 
 def swiid_date_down_get(url, *args, **kwargs):
-    if url == xs.SWIID_COMMITS_URL:  # only SWIID's release date; its data still loads
+    if url == ds.SWIID_COMMITS_URL:  # only SWIID's release date; its data still loads
         raise ConnectionError(GITHUB_DOWN)
     return fake_get(url, *args, **kwargs)
 
@@ -131,8 +131,8 @@ def swiid_date_down_get(url, *args, **kwargs):
 du.clear_disk_cache()
 st.cache_data.clear()
 with patch.object(du._SESSION, "get", side_effect=swiid_date_down_get):
-    xdf, errors = du.load_extra_data()
-    assert errors == {} and "SWIID:GINI_DISP" in set(xdf["series_code"]), errors  # not a failed source
+    data, errors = du.load_data()
+    assert errors == {} and "SWIID:GINI_DISP" in set(data["series_code"]), errors  # not a failed source
     updates = du.source_updates()
     assert updates["SWIID"] is None and updates == {**EXPECTED_RELEASES, "SWIID": None}, updates
 
@@ -142,7 +142,7 @@ with patch.object(du._SESSION, "get", side_effect=swiid_date_down_get):
     at.selectbox(key="trends_entity").set_value("USA").run()
     assert not at.exception, at.exception
     footers = [m.value for m in at.tabs[1].markdown if "Source:" in m.value]
-    swiid = [f for f in footers if xs.SOURCES["SWIID"]["label"] in f]
+    swiid = [f for f in footers if ds.SOURCES["SWIID"]["label"] in f]
     assert swiid and not any("Last updated" in f for f in swiid), swiid  # the chart, without a date
     assert any("World Development Indicators · Last updated" in f for f in footers)  # the others keep theirs
 print("OK: a source without a release date loads, with no 'Last updated' in its footer")
@@ -151,18 +151,18 @@ calls = []
 du.clear_disk_cache()
 st.cache_data.clear()
 with patch.object(du._SESSION, "get", side_effect=counting_get):
-    du.load_extra_data()
+    du.load_data()
     assert du._UPDATES_CACHE_FILE.exists()
     # A cache written before the dates were kept: every data file is there and fresh, but no WHR date.
     on_disk = json.loads(du._UPDATES_CACHE_FILE.read_text(encoding="utf-8"))
     del on_disk["WHR"]
     du._UPDATES_CACHE_FILE.write_text(json.dumps(on_disk), encoding="utf-8")
-    du.load_extra_data.clear()
+    du.load_data.clear()
     n_before = len(calls)
-    du.load_extra_data()
-    assert calls[n_before:] == [xs.WHR_URL], calls[n_before:]  # only that source is refetched
+    du.load_data()
+    assert calls[n_before:] == [ds.WHR_URL], calls[n_before:]  # only that source is refetched
     du.source_updates.clear()
-    assert du.source_updates()["WHR"] == xs.WHR_RELEASED
+    assert du.source_updates()["WHR"] == ds.WHR_RELEASED
     assert "WHR" in json.loads(du._UPDATES_CACHE_FILE.read_text(encoding="utf-8"))  # healed on disk too
 du.clear_disk_cache()
 st.cache_data.clear()
@@ -178,7 +178,7 @@ def wdi_slow_once_get(url, params=None, timeout=None, **kwargs):
     """Every WDI series times out on its first request, then answers."""
     if "/indicator/" in url and url not in timed_out:
         timed_out.append(url)
-        assert timeout == xs.WDI_TIMEOUT, timeout
+        assert timeout == ds.WDI_TIMEOUT, timeout
         raise requests.exceptions.ReadTimeout("simulated: read timed out")
     return fake_get(url, params=params, timeout=timeout, **kwargs)
 
@@ -190,18 +190,18 @@ def wdi_always_slow_get(url, params=None, timeout=None, **kwargs):
     return fake_get(url, params=params, timeout=timeout, **kwargs)
 
 
-with patch.object(xs, "RETRY_WAIT", 0):
-    table, _ = xs.fetch_wdi(type("S", (), {"get": staticmethod(wdi_slow_once_get)}))
-    assert len(timed_out) == len(xs.WDI_SERIES), len(timed_out)  # each series failed once...
-    assert set(table["series_code"]) == set(xs.series_of("WDI"))  # ...and still loaded
+with patch.object(ds, "RETRY_WAIT", 0):
+    table, _ = ds.fetch_wdi(type("S", (), {"get": staticmethod(wdi_slow_once_get)}))
+    assert len(timed_out) == len(ds.WDI_SERIES), len(timed_out)  # each series failed once...
+    assert set(table["series_code"]) == set(ds.series_of("WDI"))  # ...and still loaded
     timed_out.clear()
     try:
-        xs.fetch_wdi(type("S", (), {"get": staticmethod(wdi_always_slow_get)}))
+        ds.fetch_wdi(type("S", (), {"get": staticmethod(wdi_always_slow_get)}))
         raise AssertionError("fetch_wdi should fail when the API never answers")
     except requests.exceptions.ReadTimeout:
         pass
     # gives up after WDI_ATTEMPTS tries per series (other series may not have started)
-    assert max(timed_out.count(u) for u in set(timed_out)) == xs.WDI_ATTEMPTS
+    assert max(timed_out.count(u) for u in set(timed_out)) == ds.WDI_ATTEMPTS
 print("OK: a timed-out World Bank request is retried, and gives up after WDI_ATTEMPTS")
 
-print("\nALL EXTRA SOURCE CHECKS PASSED")
+print("\nALL SOURCE CHECKS PASSED")

@@ -1,7 +1,8 @@
 """
 Regression test for the forecast-period marker: charts don't shade the forecast period
 with a grey band (no rect or line shapes at x); instead trend_chart draws each series
-solid up to forecast_start() and dotted from there on, and trend_stacked_bar draws
+solid up to its forecast_x (du.series_split: where the series' projections start) and dotted
+from there on, and trend_stacked_bar draws
 forecast years at half strength.
 """
 import _pathfix  # noqa: F401
@@ -13,14 +14,14 @@ from test_app2 import FAKE_LAST_ESTIMATE_YEAR, fake_get
 du.clear_disk_cache()
 
 with patch.object(du._SESSION, "get", side_effect=fake_get):
-    df, countries = du.load_data()
-    du.forecast_start.clear()
-    split = du.forecast_start()  # cached from here on, so the charts below reuse this value
+    data, errors = du.load_data()
+assert errors == {}, errors
+split = du.series_split(du.BIRTH_RATE, data)  # birth rates: projected from 2030, split after the last estimate
 assert split == FAKE_LAST_ESTIMATE_YEAR + 0.5, split
 
 import app as app_mod
 
-t = du.trends_data(df, "WLD")
+t = du.trends_data(data, "WLD")
 
 
 def assert_no_shading(fig, name):
@@ -28,8 +29,8 @@ def assert_no_shading(fig, name):
     assert not bands, f"{name}: expected no forecast shading/vline shapes, got {bands}"
 
 
-lines = {"Birth rate": t["SP.DYN.CBRT.IN"], "Death rate": t["SP.DYN.CDRT.IN"]}
-fig = app_mod.trend_chart(lines, {}, title="t")
+lines = {"Birth rate": t[du.BIRTH_RATE], "Death rate": t[du.DEATH_RATE]}
+fig = app_mod.trend_chart(lines, {}, title="t", forecast_x=split)
 assert_no_shading(fig, "trend_chart")
 print("OK: trend_chart draws no forecast shading")
 
@@ -65,11 +66,11 @@ def assert_one_hover_trace(fig, lines, name, split):
 
 assert_one_hover_trace(fig, lines, "trend_chart", split)
 assert any(min(s.index) < split < max(s.index) for s in lines.values()), "fixture must span the split"
-no_fcst = {"Observed only": t["SP.DYN.CBRT.IN"]}
+no_fcst = {"Observed only": t[du.BIRTH_RATE]}
 plain = app_mod.trend_chart(no_fcst, {}, title="t", forecast_x=float("inf"))
 assert len(plain.data) == 2 and plain.data[0].line.dash is None and plain.data[0].hoverinfo == "skip"
 assert_one_hover_trace(plain, no_fcst, "no forecast", float("inf"))
-slog = app_mod.trend_chart(lines, {}, title="t", y_log=True)
+slog = app_mod.trend_chart(lines, {}, title="t", forecast_x=split, y_log=True)
 assert_one_hover_trace(slog, lines, "y_log", split)
 for tr in slog.data:
     if tr.hoverinfo != "skip":
@@ -77,18 +78,19 @@ for tr in slog.data:
         assert list(tr.customdata) == list(lines[tr.legendgroup].dropna()), "y_log: tooltip must show real values"
 print("OK: one hover trace per series covering every year once (also without a forecast and with y_log)")
 
-pop = app_mod.trend_chart({"Population": t["SP.POP.TOTL"]}, {}, title="t", hline_zero=True)
+pop = app_mod.trend_chart({"Population": t[du.POP_TOTAL]}, {}, title="t", forecast_x=split, hline_zero=True)
 assert pop.layout.yaxis.rangemode == "tozero", "hline_zero must extend the y-axis to include 0"
 print("OK: hline_zero extends the y-axis to 0 (total population)")
 
-bars = app_mod.trend_stacked_bar({"Net migration": t["SM.POP.NETM"], "Natural": t["natural_increase"]}, {}, title="t")
+bars = app_mod.trend_stacked_bar({"Net migration": t[du.NET_MIGRATION], "Natural": t[du.NATURAL_INCREASE]}, {}, title="t",
+                                 forecast_x=split)
 assert_no_shading(bars, "trend_stacked_bar")
 assert bars.layout.barmode == "relative" and len(bars.data) == 2
 assert all(c.endswith(f",{app_mod.FORECAST_BAR_ALPHA})") == (x >= split) for tr in bars.data for x, c in zip(tr.x, tr.marker.color))
 print("OK: trend_stacked_bar stacks relative to zero, forecast years at half strength")
 
-dep = app_mod.trend_stacked_bar({"Youth": t["SP.POP.DPND.YG"], "Elderly": t["SP.POP.DPND.OL"]}, {}, title="t",
-                                hover_only={"Total": t["SP.POP.DPND"]})
+dep = app_mod.trend_stacked_bar({"Youth": t["POP:SP.POP.DPND.YG"], "Elderly": t["POP:SP.POP.DPND.OL"]}, {}, title="t",
+                                hover_only={"Total": t["POP:SP.POP.DPND"]}, forecast_x=split)
 bar_traces = [tr for tr in dep.data if tr.type == "bar"]
 hover_rows = [tr for tr in dep.data if tr.type == "scatter"]
 assert len(bar_traces) == 2 and len(hover_rows) == 1 and hover_rows[0].line.width == 0

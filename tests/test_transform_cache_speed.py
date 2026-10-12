@@ -18,7 +18,8 @@ import time
 from unittest.mock import patch
 
 import data_utils as du
-from test_app2 import fake_extra_get
+import sources as ds
+from test_app2 import fake_get as small_fake_get, fake_source_get
 
 random.seed(0)
 
@@ -102,9 +103,11 @@ def fake_get(url, params=None, timeout=None, **kwargs):
     params = params or {}
     if url.endswith("/v2/country"):
         return FakeResponse(fake_country_payload())
-    extra = fake_extra_get(url, params)  # Economics/Other sources: test_app2's small fakes
-    if extra is not None:
-        return extra
+    if url == ds.LAST_ESTIMATE_URL:  # the population data's last estimate year
+        return small_fake_get(url, params)
+    other = fake_source_get(url, params)  # every other source: test_app2's small fakes
+    if other is not None:
+        return other
     series_code = url.split("/series/")[1].split("/time/")[0]
     page = int(params.get("page", 1))
     per_page = int(params.get("per_page", 32000))
@@ -114,12 +117,13 @@ def fake_get(url, params=None, timeout=None, **kwargs):
 with patch.object(du._SESSION, "get", side_effect=fake_get):
     du.clear_disk_cache()
     du.load_data.clear()
-    du.fetch_countries.clear()
-    du.fetch_indicator.clear()
+    du.load_countries.clear()
 
     start = time.time()
-    df, countries = du.load_data()
-    print(f"Fetched fake dataset: {df.shape[0]:,} rows in {time.time()-start:.2f}s")
+    data, errors = du.load_data()
+    countries, _ = du.load_countries()
+    assert errors == {}, errors
+    print(f"Fetched fake dataset: {data.shape[0]:,} rows in {time.time()-start:.2f}s")
 
     from streamlit.testing.v1 import AppTest
     at = AppTest.from_file(_pathfix.APP_PATH, default_timeout=120)

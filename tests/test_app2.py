@@ -115,7 +115,7 @@ def fake_indicator_payload(series_code, page, per_page):
             all_rows.append({
                 "variable": [
                     {"concept": "Country", "id": eid, "value": ename},
-                    {"concept": "Series", "id": series_code, "value": du.INDICATORS.get(series_code, series_code)},
+                    {"concept": "Series", "id": series_code, "value": ds.POP_SERIES.get(series_code, series_code)},
                     {"concept": "Time", "id": f"YR{y}", "value": str(y)},
                 ],
                 "value": None if value is None else round(value, 4),  # the real API sends null for no data
@@ -150,16 +150,16 @@ def fake_get(url, params=None, timeout=None, **kwargs):
         page = int(params.get("page", 1))
         per_page = int(params.get("per_page", 32000))
         return FakeResponse(fake_indicator_payload(series_code, page, per_page))
-    if url.endswith(f"/country/WLD/indicator/{du.ESTIMATES_SERIES}"):  # du.last_estimate_year's WDI lookup
+    if url == ds.LAST_ESTIMATE_URL:  # ds.last_estimate_year's WDI lookup
         return FakeResponse(fake_wdi_last_year_payload(FAKE_LAST_ESTIMATE_YEAR))
-    extra = fake_extra_get(url, params)
-    if extra is not None:
-        return extra
+    other = fake_source_get(url, params)
+    if other is not None:
+        return other
     raise AssertionError(f"Unexpected URL in test: {url}")
 
 
 # --------------------------------------------------------------------------
-# Fakes for the extra sources (extra_sources.py), in each source's real layout (checked
+# Fakes for the other sources (sources.py), in each source's real layout (checked
 # against the live sources): WDI JSON, IMF SDMX CSV, ND-GAIN zip, WHR Excel, Harvard Dataverse (ECI), UNDP Latin-1 CSV, ILOSTAT CSV, SWIID CSV, PIP JSON.
 # --------------------------------------------------------------------------
 
@@ -171,9 +171,9 @@ import zipfile  # noqa: E402
 
 import pandas as pd  # noqa: E402
 
-import extra_sources as xs  # noqa: E402
+import sources as ds  # noqa: E402
 
-EXTRA_ISO3 = [c["id"] for c in COUNTRIES]  # USA, CHN, NGA, IND, UKR
+COUNTRY_ISO3 = [c["id"] for c in COUNTRIES]  # USA, CHN, NGA, IND, UKR
 
 # Release dates, in each publisher's own format (see the fakes below); a different month for each.
 FAKE_POP_RELEASE = "2026-07-01"  # the API's "lastupdated"
@@ -187,12 +187,12 @@ FAKE_PIP_VERSIONS = ["20261001_2017_01_02_PROD",  # a newer release in 2017 PPP:
                      "20260922_2021_01_02_PROD", "20260324_2021_01_02_PROD"]
 # What du.source_updates() should return for these fakes (ND-GAIN, WHR, UNDP: stored constants).
 EXPECTED_RELEASES = {du.POPULATION_SOURCE: dt.date(2026, 7, 1), "WDI": dt.date(2026, 9, 15),
-                     "IMF": dt.date(2025, 10, 14), "NDGAIN": xs.NDGAIN_RELEASED, "WHR": xs.WHR_RELEASED,
-                     "ECI": dt.date(2026, 2, 8), "UNDP": xs.UNDP_RELEASED, "ILO": dt.date(2026, 3, 20),
+                     "IMF": dt.date(2025, 10, 14), "NDGAIN": ds.NDGAIN_RELEASED, "WHR": ds.WHR_RELEASED,
+                     "ECI": dt.date(2026, 2, 8), "UNDP": ds.UNDP_RELEASED, "ILO": dt.date(2026, 3, 20),
                      "SWIID": dt.date(2026, 1, 8), "PIP": dt.date(2026, 9, 22)}
-EXTRA_NAMES = {c["id"]: c["name"] for c in COUNTRIES}
+COUNTRY_NAMES = {c["id"]: c["name"] for c in COUNTRIES}
 # COUNTRY_UPDATE_DATE lags the edition, as in the live data: projections start in the publication
-# year (FAKE_IMF_PUBLICATION, 2025), not 2024 (see xs._imf_projection_start).
+# year (FAKE_IMF_PUBLICATION, 2025), not 2024 (see ds._imf_projection_start).
 IMF_UPDATE_DATE = "9/19/2024"
 
 
@@ -203,7 +203,7 @@ def _xvalue(i, year, lo=0.0, hi=100.0):
 def fake_wdi_payload(code):
     # Countries by ISO3, World + a region by ISO3, an income group with an empty ISO3 (as the real API),
     # an aggregate the dictionary drops (Arab World), and a null value (the API sends every year).
-    entities = [(iso, iso[:2], EXTRA_NAMES[iso]) for iso in EXTRA_ISO3]
+    entities = [(iso, iso[:2], COUNTRY_NAMES[iso]) for iso in COUNTRY_ISO3]
     entities += [("WLD", "1W", "World"), ("SSF", "ZG", "Sub-Saharan Africa"), ("", "XD", "High income"),
                  ("ARB", "1A", "Arab World")]
     recs = []
@@ -219,8 +219,8 @@ def fake_wdi_payload(code):
 @functools.lru_cache(maxsize=None)
 def fake_imf_csv() -> bytes:
     rows = []
-    for i, c in enumerate(EXTRA_ISO3 + ["G001", "G110"]):  # G001 = World, G110 = an IMF group (dropped)
-        for ind in xs.IMF_SERIES:
+    for i, c in enumerate(COUNTRY_ISO3 + ["G001", "G110"]):  # G001 = World, G110 = an IMF group (dropped)
+        for ind in ds.IMF_SERIES:
             for y in range(1980, 2031):
                 rows.append({"STRUCTURE[;]": "dataflow", "COUNTRY": c, "INDICATOR": ind, "FREQUENCY": "A",
                              "TIME_PERIOD": y, "OBS_VALUE": _xvalue(i, y, -5, 10), "UNIT": "PT",
@@ -229,7 +229,7 @@ def fake_imf_csv() -> bytes:
 
 
 def fake_imf_attributes_csv() -> bytes:
-    """xs._imf_publication_date's request: one series with every attribute, PUBLICATION_DATE among them."""
+    """ds._imf_publication_date's request: one series with every attribute, PUBLICATION_DATE among them."""
     return pd.DataFrame([{"COUNTRY": "G001", "INDICATOR": "NGDP_RPCH", "TIME_PERIOD": y, "OBS_VALUE": 3.0,
                           "COUNTRY_UPDATE_DATE": IMF_UPDATE_DATE, "PUBLICATION_DATE": FAKE_IMF_PUBLICATION}
                          for y in (2025, 2026)]).to_csv(index=False).encode()
@@ -247,10 +247,10 @@ def _excel(sheets: dict[str, pd.DataFrame]) -> bytes:
 def fake_ndgain_zip() -> bytes:
     buf = io.BytesIO()
     with zipfile.ZipFile(buf, "w") as zf:
-        for member in xs.NDGAIN_SERIES:
-            wide = pd.DataFrame([{"ISO3": c, "Name": EXTRA_NAMES[c],
+        for member in ds.NDGAIN_SERIES:
+            wide = pd.DataFrame([{"ISO3": c, "Name": COUNTRY_NAMES[c],
                                   **{str(y): _xvalue(i, y, 0.2, 0.8) for y in range(1995, 2025)}}
-                                 for i, c in enumerate(EXTRA_ISO3)])
+                                 for i, c in enumerate(COUNTRY_ISO3)])
             zf.writestr(f"resources 2/{member}", wide.to_csv(index=False))
             # trends/<name>.csv: same file name, different layout -- must not be picked
             name = member.split("/")[1]
@@ -259,14 +259,14 @@ def fake_ndgain_zip() -> bytes:
 
 
 # Names as the name-matched sources spell them (checked against the live files).
-SWIID_NAMES = {**EXTRA_NAMES, "USA": "United States"}
+SWIID_NAMES = {**COUNTRY_NAMES, "USA": "United States"}
 
 
 @functools.lru_cache(maxsize=None)
 def fake_whr_xlsx() -> bytes:
-    rows = [{"Year": y, "Rank": 1, "Country name": EXTRA_NAMES.get(c, "Somaliland Region"),
+    rows = [{"Year": y, "Rank": 1, "Country name": COUNTRY_NAMES.get(c, "Somaliland Region"),
              "Life evaluation (3-year average)": _xvalue(i, y, 3, 8), "Lower whisker": 1.0, "Upper whisker": 9.0}
-            for i, c in enumerate(EXTRA_ISO3 + ["SOM_R"]) for y in range(2011, 2026)]
+            for i, c in enumerate(COUNTRY_ISO3 + ["SOM_R"]) for y in range(2011, 2026)]
     return _excel({"Sheet1": pd.DataFrame(rows)})
 
 
@@ -285,13 +285,13 @@ def fake_eci_meta() -> dict:
 def fake_eci_csv() -> bytes:
     rows = [{"country_id": i, "country_iso3_code": c, "year": y, "growth_proj": 3.0, "in_rankings": True,
              "eci_sitc": _xvalue(i, y, -2, 2), "eci_rank_sitc": i + 1, "eci_hs92": 0.5, "eci_rank_hs92": i + 1}
-            for i, c in enumerate(EXTRA_ISO3) for y in range(1995, 2025)]
+            for i, c in enumerate(COUNTRY_ISO3) for y in range(1995, 2025)]
     return pd.DataFrame(rows).to_csv(index=False).encode()
 
 
 @functools.lru_cache(maxsize=None)
 def fake_undp_csv() -> bytes:
-    entities = [(c, EXTRA_NAMES[c]) for c in EXTRA_ISO3] + [("CIV", "Côte d'Ivoire"),
+    entities = [(c, COUNTRY_NAMES[c]) for c in COUNTRY_ISO3] + [("CIV", "Côte d'Ivoire"),
                                                            ("ZZA.VHHD", "Very high human development")]
     rows = [{"iso3": c, "country": name, "hdicode": "High", "hdi_2023": 0.7,
              **{f"mys_{y}": _xvalue(i, y, 1, 14) for y in range(1990, 2024)}, "mys_f_2023": 1.0,
@@ -303,7 +303,7 @@ def fake_undp_csv() -> bytes:
 @functools.lru_cache(maxsize=None)
 def fake_ilo_csv(ind_id: str) -> bytes:
     rows = []
-    for i, c in enumerate(EXTRA_ISO3 + ["X01"]):  # X01: an ILO regional group, dropped
+    for i, c in enumerate(COUNTRY_ISO3 + ["X01"]):  # X01: an ILO regional group, dropped
         for y in range(2004, 2028):
             base = {"ref_area": c, "source": "XA:2198", "indicator": ind_id[:-2], "time": y, "obs_status": ""}
             if ind_id.startswith("EIP"):  # by sex: only the total is kept
@@ -318,7 +318,7 @@ def fake_ilo_csv(ind_id: str) -> bytes:
 def fake_swiid_csv() -> bytes:
     rows = [{"country": SWIID_NAMES.get(c, "Soviet Union"), "year": y, "gini_disp": _xvalue(i, y, 20, 60),
              "gini_disp_se": 1.0, "gini_mkt": 45.0}
-            for i, c in enumerate(EXTRA_ISO3 + ["SUN"]) for y in range(1960, 2025)]
+            for i, c in enumerate(COUNTRY_ISO3 + ["SUN"]) for y in range(1960, 2025)]
     return pd.DataFrame(rows).to_csv(index=False).encode()
 
 
@@ -327,9 +327,9 @@ PIP_NOWCAST_FROM = 2024
 
 def fake_pip_payload() -> list[dict]:
     rows = []
-    for i, c in enumerate(EXTRA_ISO3):
+    for i, c in enumerate(COUNTRY_ISO3):
         for y in range(1981, 2027):
-            row = {"country_code": c, "country_name": EXTRA_NAMES[c], "reporting_year": y,
+            row = {"country_code": c, "country_name": COUNTRY_NAMES[c], "reporting_year": y,
                    "reporting_level": "national", "welfare_type": "consumption",
                    "headcount": _xvalue(i, y, 0, 0.6), "median": _xvalue(i, y, 1, 60),
                    "estimation_type": "survey" if y % 3 == 0 else "interpolation",
@@ -347,38 +347,38 @@ def fake_pip_payload() -> list[dict]:
     return rows
 
 
-def fake_extra_get(url, params=None):
-    """FakeResponse for an extra source's URL, or None if url isn't one."""
+def fake_source_get(url, params=None):
+    """FakeResponse for a URL of one of the sources other than the population data, or None."""
     params = params or {}
     if url.startswith("https://api.worldbank.org/v2/country/all/indicator/"):
         return FakeResponse(fake_wdi_payload(url.rsplit("/", 1)[1]))
-    if url.startswith(xs.IMF_SDMX_URL):
+    if url.startswith(ds.IMF_SDMX_URL):
         if params.get("attributes") == "all":  # the publication date request
             return FakeResponse(content=fake_imf_attributes_csv())
         return FakeResponse(content=fake_imf_csv())
-    if url == xs.NDGAIN_URL:
+    if url == ds.NDGAIN_URL:
         return FakeResponse(content=fake_ndgain_zip())
-    if url == xs.WHR_URL:
+    if url == ds.WHR_URL:
         return FakeResponse(content=fake_whr_xlsx())
-    if url == f"{xs.DATAVERSE_URL}/datasets/:persistentId/" and params.get("persistentId") == xs.ECI_DOI:
+    if url == f"{ds.DATAVERSE_URL}/datasets/:persistentId/" and params.get("persistentId") == ds.ECI_DOI:
         return FakeResponse(fake_eci_meta())
-    if url == f"{xs.DATAVERSE_URL}/access/datafile/{FAKE_ECI_FILE_ID}":
+    if url == f"{ds.DATAVERSE_URL}/access/datafile/{FAKE_ECI_FILE_ID}":
         return FakeResponse(content=fake_eci_csv())
-    if url == xs.UNDP_URL:
+    if url == ds.UNDP_URL:
         return FakeResponse(content=fake_undp_csv())
-    if url == xs.ILO_URL and params.get("id") in xs.ILO_SERIES:
+    if url == ds.ILO_URL and params.get("id") in ds.ILO_SERIES:
         return FakeResponse(content=fake_ilo_csv(params["id"]))
-    if url == xs.ILO_TOC_URL:
+    if url == ds.ILO_TOC_URL:
         toc = pd.DataFrame([{"id": i, "indicator": i[:-2], "last.update": d} for i, d in FAKE_ILO_TOC.items()])
         return FakeResponse(content=toc.to_csv(index=False).encode())
-    if url == xs.SWIID_URL:
+    if url == ds.SWIID_URL:
         return FakeResponse(content=fake_swiid_csv())
-    if url == xs.SWIID_COMMITS_URL and params.get("path") == xs.SWIID_PATH:
+    if url == ds.SWIID_COMMITS_URL and params.get("path") == ds.SWIID_PATH:
         return FakeResponse([{"sha": "d644379", "commit": {"committer": {"date": FAKE_SWIID_COMMIT},
                                                           "message": "update for 9.92"}}])
-    if url == xs.PIP_URL:
+    if url == ds.PIP_URL:
         return FakeResponse(fake_pip_payload())
-    if url == xs.PIP_INFO_URL:
+    if url == ds.PIP_INFO_URL:
         return FakeResponse({"available_data_versions": FAKE_PIP_VERSIONS})
     return None
 
@@ -390,7 +390,7 @@ UNDP_LABEL = "Mean years of schooling"  # a Distributions indicator with a short
 def fake_wdi_last_year_payload(year):
     """WDI's /country/WLD/indicator/{code}?mrnev=1 response: metadata, then one value."""
     return [{"page": 1, "pages": 1, "per_page": 50, "total": 1},
-            [{"indicator": {"id": du.ESTIMATES_SERIES, "value": "Population, total"},
+            [{"indicator": {"id": ds.ESTIMATES_SERIES, "value": "Population, total"},
               "country": {"id": "1W", "value": "World"}, "countryiso3code": "WLD",
               "date": str(year), "value": 8e9, "obs_status": "", "decimal": 0}]]
 
@@ -411,21 +411,22 @@ def run():
     # at import time because other tests import this module for its fixtures.
     du.clear_disk_cache()
     with patch.object(du._SESSION, "get", side_effect=fake_get):
-        df, countries = du.load_data()
-        print("Loaded df:", df.shape, "countries:", countries.shape)
-        assert not df.empty
-        assert set(du.INDICATORS) <= set(df["series_code"].unique())
+        countries, country_errors = du.load_countries()
+        data, errors = du.load_data()
+        print("Loaded data:", data.shape, "countries:", countries.shape)
+        assert errors == {} and country_errors == {}, (errors, country_errors)
+        assert set(du.SERIES) <= set(data["series_code"].unique()), set(du.SERIES) - set(data["series_code"])
         assert not countries.empty
 
-        tn = du.trends_data(df, "NGA")
+        tn = du.trends_data(data, "NGA")
         y = 2020
-        assert abs(tn.loc[y, "births"] - tn.loc[y, "SP.DYN.CBRT.IN"] * tn.loc[y, "SP.POP.TOTL"] / 1000) < 1e-6
-        assert abs(tn.loc[y, "natural_increase"] - (tn.loc[y, "births"] - tn.loc[y, "deaths"])) < 1e-6
-        assert tn["SH.DYN.MORT"].dropna().index.max() == 2024  # history only
+        assert abs(tn.loc[y, du.BIRTHS] - tn.loc[y, du.BIRTH_RATE] * tn.loc[y, du.POP_TOTAL] / 1000) < 1e-6
+        assert abs(tn.loc[y, du.NATURAL_INCREASE] - (tn.loc[y, du.BIRTHS] - tn.loc[y, du.DEATHS])) < 1e-6
+        assert tn["POP:SH.DYN.MORT"].dropna().index.max() == 2024  # history only
         print("OK: trends_data derived columns")
 
-        pop = du.country_indicator_wide(df, countries, "SP.POP.TOTL")
-        assert pop.loc["NGA", 2020] == tn.loc[2020, "SP.POP.TOTL"]
+        pop = du.country_indicator_wide(data, countries, du.POP_TOTAL)
+        assert pop.loc["NGA", 2020] == tn.loc[2020, du.POP_TOTAL]
         assert "WLD" not in pop.index  # real countries only
         import app as app_mod
         import numpy as np
@@ -530,9 +531,7 @@ def run():
         assert views[0] == ("Economics", "Real GDP growth") and len(set(views)) == len(views) == 8
         for section, label in views:
             assert label in app_mod.DISTRIBUTION_SECTIONS.get(section, {}), (section, label)
-        view_source = {v: app_mod.xs.source_of(app_mod.DISTRIBUTION_SECTIONS[v[0]][v[1]]["series"])
-                       if app_mod.DISTRIBUTION_SECTIONS[v[0]][v[1]]["series"] in du.EXTRA_SERIES
-                       else du.POPULATION_SOURCE for v in views}
+        view_source = {v: ds.source_of(app_mod.DISTRIBUTION_SECTIONS[v[0]][v[1]]["series"]) for v in views}
         assert list(view_source.values()) == ["IMF", du.POPULATION_SOURCE, "ILO", "SWIID", "NDGAIN",
                                               "UNDP", "ECI", "WHR"], view_source
         for available, expected in [({"ILO", "UNDP"}, ("Labour market", "Youth NEET rate")),
@@ -544,9 +543,7 @@ def run():
             assert got == expected, (available, got)
         print("OK: distributions initial view")
 
-        # Extra sources: every source loads, every series is there, aggregates only where published.
-        xdf, x_errors = du.load_extra_data()
-        assert x_errors == {}, x_errors
+        # Every source loads (above), every series is there, aggregates only where published.
         # Release dates: one per source, from each publisher's metadata (or the stored constants).
         assert du.source_updates() == EXPECTED_RELEASES, du.source_updates()
         assert app_mod.month_year(dt.date(2026, 7, 31)) == "Jul-2026"
@@ -555,47 +552,55 @@ def run():
         assert (app_mod.source_text(["WDI", "IMF"], [None, dt.date(2026, 4, 14)])
                 == "WDI; IMF · Last updated Apr-2026")
         # A chart whose lines come from two sources names each, with its own projections and date.
-        two = app_mod.extra_spec(app_mod.trend_chart, {"Growth": "IMF:NGDP_RPCH", "Unemployment": "WB:SL.UEM.TOTL.ZS"},
-                                 du.extra_trends_data(xdf, "USA"), xdf, {}, "Two sources", "%")
+        two = app_mod.series_spec(app_mod.trend_chart, {"Growth": "IMF:NGDP_RPCH", "Unemployment": "WB:SL.UEM.TOTL.ZS"},
+                                  du.trends_data(data, "USA"), data, {}, "Two sources", "%")
         assert two["sources"] == [("IMF, World Economic Outlook", "IMF"),
                                   ("World Bank, World Development Indicators", "WDI")], two["sources"]
         print("OK: source release dates")
-        assert set(du.EXTRA_SERIES) <= set(xdf["series_code"].unique()), set(du.EXTRA_SERIES) - set(xdf["series_code"])
-        assert not xdf["value"].isna().any() and not xdf.duplicated(["series_code", "country_code", "year"]).any()
-        aggs = {src: set(xdf.loc[xdf["series_code"].str.startswith(src + ":"), "country_code"]) - set(EXTRA_ISO3)
+        assert not data["value"].isna().any() and not data.duplicated(["series_code", "country_code", "year"]).any()
+        aggs = {src: set(data.loc[data["series_code"].str.startswith(src + ":"), "country_code"]) - set(COUNTRY_ISO3)
                 for src in ("WB", "IMF", "NDGAIN")}
         assert aggs == {"WB": {"WLD", "SSF", "HIC"}, "IMF": {"WLD"}, "NDGAIN": set()}, aggs
-        xt = du.extra_trends_data(xdf, "USA")
-        assert list(xt.columns) == list(du.EXTRA_SERIES) and xt.index.min() >= 1960
-        expected_starts = {code: 2024.5 for code in du.EXTRA_SERIES if code.startswith("IMF:")}
-        expected_starts.update({code: PIP_NOWCAST_FROM - 0.5 for code in xs.series_of("PIP")})
-        expected_starts.update({code: xs._ilo_projection_start() - 0.5 for code in xs.series_of("ILO")})
-        assert du.projection_starts(xdf) == expected_starts, du.projection_starts(xdf)
+        xt = du.trends_data(data, "USA")
+        trend_columns = [*du.SERIES, du.BIRTHS, du.DEATHS, du.NATURAL_INCREASE]
+        assert list(xt.columns) == trend_columns and xt.index.min() >= 1960
+        # Projections start after the last WDI estimate year for every population series but under-5
+        # mortality (history only): 2024.5 also for birth rates, whose projections jump to 2030.
+        expected_starts = {code: FAKE_LAST_ESTIMATE_YEAR + 0.5 for code in ds.series_of(ds.POPULATION)
+                           if code != "POP:SH.DYN.MORT"}
+        expected_starts.update({code: 2024.5 for code in du.SERIES if code.startswith("IMF:")})
+        expected_starts.update({code: PIP_NOWCAST_FROM - 0.5 for code in ds.series_of("PIP")})
+        expected_starts.update({code: ds._ilo_projection_start() - 0.5 for code in ds.series_of("ILO")})
+        assert du.projection_starts(data) == expected_starts, du.projection_starts(data)
+        assert du.series_split(du.NET_MIGRATION_RATE, data) == FAKE_LAST_ESTIMATE_YEAR + 0.5  # derived
+        assert du.series_split("POP:SH.DYN.MORT", data) == math.inf
         # IMF's split: the publication year; without it, the latest COUNTRY_UPDATE_DATE.
-        assert xs._imf_projection_start(dt.date(2026, 4, 14), pd.Series(["9/26/2025"])) == 2026
-        assert xs._imf_projection_start(None, pd.Series(["9/12/2025", "9/26/2025"])) == 2025
+        assert ds._imf_projection_start(dt.date(2026, 4, 14), pd.Series(["9/26/2025"])) == 2026
+        assert ds._imf_projection_start(None, pd.Series(["9/12/2025", "9/26/2025"])) == 2025
         # PIP: national rows only, % not a share, no regional fill-ins (CMD), one row per country-year.
-        pip = xdf[xdf["series_code"] == "PIP:POV_3_00"]
+        pip = data[data["series_code"] == "PIP:POV_3_00"]
         assert pip["value"].max() <= 60 and "SAU" not in set(pip["country_code"]), pip["value"].max()
         # ILO: both sexes only; groups dropped. UNDP: read despite the Latin-1 encoding.
-        assert set(xdf.loc[xdf["series_code"] == "ILO:NEET", "country_code"]) == set(EXTRA_ISO3)
-        assert "CIV" in set(xdf.loc[xdf["series_code"] == "UNDP:MYS", "country_code"])
-        empty = du.extra_trends_data(xdf, "LIC")  # no source publishes Low income here
-        assert empty.empty and list(empty.columns) == list(du.EXTRA_SERIES)
+        assert set(data.loc[data["series_code"] == "ILO:NEET", "country_code"]) == set(COUNTRY_ISO3)
+        assert "CIV" in set(data.loc[data["series_code"] == "UNDP:MYS", "country_code"])
+        empty = du.trends_data(data, "XKX")  # no source publishes Kosovo here: every column, no rows
+        assert empty.empty and list(empty.columns) == trend_columns
+        lic = du.trends_data(data, "LIC")  # Low income: only the population data publishes it here
+        assert {ds.source_of(c) for c in lic.columns if lic[c].notna().any()} == {ds.POPULATION}
         # GDP and GNI per capita share one y-axis range, from 0 to above both series' maximum.
-        specs = app_mod.living_standards_charts(xt, xdf)[:2]
+        specs = app_mod.living_standards_charts(xt, data)[:2]
         ranges = [tuple(s["chart_fn"](s["lines"], s["colors"], title="x", **s["kw"]).layout.yaxis.range)
                   for s in specs]
         top = xt[["WB:NY.GDP.PCAP.PP.KD", "WB:NY.GNP.PCAP.PP.KD"]].max().max()
         assert ranges[0] == ranges[1] and ranges[0][0] == 0 and ranges[0][1] > top, (ranges, top)
         # The Economic Complexity Index's y-axis is symmetric around 0 (the world average) on one fixed
         # scale (+-2.5, plus the usual 10% headroom) for every country; bounded scores stay within their scale.
-        eci = next(s for s in app_mod.industry_charts(xt, xdf) if s["title"] == "Economic Complexity Index")
+        eci = next(s for s in app_mod.industry_charts(xt, data) if s["title"] == "Economic Complexity Index")
         lo, hi = eci["chart_fn"](eci["lines"], eci["colors"], title="x", **eci["kw"]).layout.yaxis.range
         assert xt["ECI:ECI"].abs().max() < app_mod.ECI_SCALE and (lo, hi) == (-2.75, 2.75), (lo, hi)
         assert app_mod.symmetric_axis(-2.9, -1.7, 0)["range"][0] < -2.9
         assert app_mod.symmetric_axis(5, 99, 50)["range"] == [0, 100]
-        print("OK: extra sources")
+        print("OK: every source")
 
         # Reference marks: each on its Trends chart (if it has one) and its Distributions histogram,
         # labelled; education's is a band from 4 to 6. Out-of-pocket spending and elderly share have none (user).
@@ -609,9 +614,9 @@ def run():
             spec = next(s for s in specs if s["title"] == title)
             return spec, spec["chart_fn"](spec["lines"], spec["colors"], title="x", **spec["kw"])
 
-        tn_specs = app_mod.demographics_charts(tn)
-        x_specs = (app_mod.living_standards_charts(xt, xdf) + app_mod.education_charts(xt, xdf)
-                   + app_mod.healthcare_charts(xt, xdf))
+        tn_specs = app_mod.demographics_charts(tn, data)
+        x_specs = (app_mod.living_standards_charts(xt, data) + app_mod.education_charts(xt, data)
+                   + app_mod.healthcare_charts(xt, data))
         expected_lines = {  # Trends title -> (value, label)
             "Total fertility rate": (2.1, "Replacement level (2.1)"),
             "Under-5 mortality rate": (25, "SDG target for 2030 (25)"),
@@ -623,9 +628,9 @@ def run():
             assert [(s.y0, s.y1) for s in lines] == [(value, value)] and not bands, (title, lines, bands)
             assert texts == [label], (title, texts)
             assert fig.layout.yaxis.range[1] >= value, (title, fig.layout.yaxis.range)  # axis reaches the line
-        u5 = tn["SH.DYN.MORT"].dropna()
+        u5 = tn["POP:SH.DYN.MORT"].dropna()
         assert u5.max() > 25, "the fake under-5 rates should cross the line"
-        _, low_u5 = trend_fig(app_mod.demographics_charts(tn.assign(**{"SH.DYN.MORT": u5 / 30})),
+        _, low_u5 = trend_fig(app_mod.demographics_charts(tn.assign(**{"POP:SH.DYN.MORT": u5 / 30}), data),
                               "Under-5 mortality rate")
         assert low_u5.layout.yaxis.range[1] > 25, low_u5.layout.yaxis.range  # far below it: axis still reaches 25
         spec, fig = trend_fig(x_specs, "Government expenditure on education")
@@ -729,7 +734,7 @@ def run():
         # entirely -- no header, no "no data" notes.
         assert [h.value for h in at.subheader] == ["Demographics"], [h.value for h in at.subheader]
         assert not at.info, [i.value for i in at.info]
-        assert not at.warning, [w.value for w in at.warning]  # every extra source loaded
+        assert not at.warning, [w.value for w in at.warning]  # every source loaded
         at.selectbox(key="trends_entity").set_value("USA").run()
         check(at, "trends: entity USA")
         trend_sections = [h.value for h in at.subheader]
@@ -741,7 +746,7 @@ def run():
         assert [c.value for c in at.caption].count("Read with the unemployment rate in Economics.") == 1
         footers = [m.value for m in at.markdown if "Source:" in m.value]
         assert sum(app_mod.POVERTY_TARGET_NOTE in f for f in footers) == 1, "poverty chart's footer note"
-        # "Last updated" on every Trends footer: a population chart and extra-source charts.
+        # "Last updated" on every Trends footer: population charts and every other source's.
         trend_footers = [m.value for m in at.tabs[1].markdown if "Source:" in m.value]
         assert all("· Last updated " in f for f in trend_footers), [f for f in trend_footers if "Last updated" not in f]
         # The Observed/Forecast legend explains the dotted lines: no footer repeats it (user, 2026-10-11).
@@ -750,7 +755,7 @@ def run():
                          "Source: World Bank, World Development Indicators · Last updated Sep-2026",
                          "Source: IMF, World Economic Outlook · Last updated Oct-2025",
                          "Source: University of Notre Dame, ND-GAIN Country Index · Last updated "
-                         + app_mod.month_year(xs.NDGAIN_RELEASED)]:
+                         + app_mod.month_year(ds.NDGAIN_RELEASED)]:
             assert any(expected in f for f in trend_footers), expected
         # Distributions footers stay as they were.
         assert not any("Last updated" in m.value for m in at.tabs[0].markdown), "Distributions footer"
@@ -768,7 +773,7 @@ def run():
         assert infos[3].startswith("5 of 7 indicators have data for World.") and "ND-GAIN country index" in infos[3]
         assert infos[4].startswith("2 of 3 indicators have data for World.") and "years of schooling" in infos[4]
         # Economics in the five rows the user set (2026-09-30); row 4 has two charts.
-        specs = app_mod.economics_charts(du.extra_trends_data(xdf, "WLD"), xdf)
+        specs = app_mod.economics_charts(du.trends_data(data, "WLD"), data)
         rows = [[s["title"] for s in specs if s["row"] == n] for n in range(max(s["row"] for s in specs) + 1)]
         assert rows == [["Real GDP growth", "Consumer prices", "Unemployment rate"],
                         ["Government revenue and expenditure", "Government budget balance",
@@ -777,10 +782,10 @@ def run():
                          "Domestic credit to private sector"],
                         ["Price level relative to the US", "Net energy imports"],
                         ["GDP, PPP", "Output by sector", "Employment by sector"]], rows
-        titles = [s["title"] for s in app_mod.labour_charts(du.extra_trends_data(xdf, "WLD"), xdf)]
+        titles = [s["title"] for s in app_mod.labour_charts(du.trends_data(data, "WLD"), data)]
         assert titles == ["Labour force participation rate", "Youth not in employment, education or training",
                           "Labour income share"], titles
-        titles = [s["title"] for s in app_mod.industry_charts(du.extra_trends_data(xdf, "WLD"), xdf)]
+        titles = [s["title"] for s in app_mod.industry_charts(du.trends_data(data, "WLD"), data)]
         assert titles == ["Manufacturing contribution to GDP", "Medium and high-tech manufacturing",
                           "Manufactured exports", "Economic Complexity Index",
                           "Research and development expenditure"], titles
@@ -791,7 +796,7 @@ def run():
         labels = [(sec, label) for sec, specs in app_mod.DISTRIBUTION_SECTIONS.items() for label in specs]
         assert len(labels) == len(app_mod.DISTRIBUTION_INDICATORS), "a label is in two sections (one is lost)"
         dist_series = {spec["series"] for spec in app_mod.DISTRIBUTION_INDICATORS.values()}
-        assert dist_series >= set(du.EXTRA_SERIES) - app_mod.TRENDS_ONLY_SERIES, set(du.EXTRA_SERIES) - dist_series
+        assert dist_series >= set(du.SERIES) - app_mod.TRENDS_ONLY_SERIES, set(du.SERIES) - dist_series
         assert not dist_series & app_mod.TRENDS_ONLY_SERIES  # e.g. the services shares: Trends only
         for section, label in labels:
             at.segmented_control(key="dist_section").set_value(section).run()
@@ -920,7 +925,7 @@ def run():
 
     # --- Distributions without IMF data: the tab opens on the next view, Demographics / Birth rate ---
     def imf_down_get(url, *args, **kwargs):
-        if url.startswith(xs.IMF_SDMX_URL) or url.startswith(xs.IMF_DATAMAPPER_URL):  # both IMF routes
+        if url.startswith(ds.IMF_SDMX_URL) or url.startswith(ds.IMF_DATAMAPPER_URL):  # both IMF routes
             raise ConnectionError("simulated: IMF unreachable")
         return fake_get(url, *args, **kwargs)
 

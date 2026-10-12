@@ -14,7 +14,8 @@ from test_app2 import fake_get
 du.clear_disk_cache()
 
 with patch.object(du._SESSION, "get", side_effect=fake_get):
-    df, countries = du.load_data()
+    countries, errors = du.load_countries()
+assert errors == {}, errors
 
 import app as app_mod
 
