@@ -10,10 +10,8 @@ World Economic Outlook, ND-GAIN, World Happiness Report, Harvard Growth Lab, UND
 SWIID -- loaded by data_utils.load_data() into one long table, `data`. Pulled live and cached for
 a day at a time.
 
-Chart styling follows the Urban Institute data visualization style guide
-(urbaninstitute.github.io/graphics-styleguide) and its R theme, urbnthemes, except for the
-font (Streamlit's own) and the colors (the USAID OHA palette). See style_fig() and data_utils'
-palette constants.
+Chart styling: clean, light charts with horizontal gridlines only, titles and units above the plot
+and sources below, in Streamlit's own font. See style_fig() and data_utils' palette constants.
 """
 
 from __future__ import annotations
@@ -48,7 +46,7 @@ st.set_page_config(
 
 
 # --------------------------------------------------------------------------
-# Shared chart styling -- Urban Institute style guide (style_fig)
+# Shared chart styling (style_fig)
 # --------------------------------------------------------------------------
 
 # Display-only short names for the World Bank regions. Data columns and color maps stay
@@ -123,8 +121,7 @@ def with_short_regions(df: pd.DataFrame, col: str = "region") -> pd.DataFrame:
     return df.assign(**{col: df[col].map(lambda r: REGION_SHORT_LABEL.get(r, r))})
 
 
-# Streamlit's own font, so charts match the rest of the page (the Urban guide's Lato is not
-# used, by choice). Text sizes follow the guide's web sizes: axis labels 12px, sources 11px;
+# Streamlit's own font, so charts match the rest of the page. Text sizes: axis labels 12px, sources 11px;
 # titles and legends are a step smaller in the three-per-row Trends charts (TREND_*_PX).
 FONT = '"Source Sans", "Source Sans Pro", sans-serif'
 AXIS_TEXT = dict(family=FONT, size=12, color="black")
@@ -140,7 +137,7 @@ def style_fig(
     legend_px: int = 14,
 ) -> go.Figure:
     """
-    Urban Institute chart style (graphics style guide + urbnthemes): white background, solid
+    The app's chart style: white background, solid
     light-gray horizontal gridlines only, a black x-axis line with outside ticks, no y-axis line
     or ticks, no frame, a solid black zero line, and the legend in one horizontal row across the
     top, between the title/subtitle and the plot. Units belong in the subtitle (stated once),
@@ -176,7 +173,7 @@ def style_fig(
     return fig
 
 
-# Headline case for titles, sentence case for subtitles (Urban style guide).
+# Headline case for titles, sentence case for subtitles.
 _MINOR_WORDS = {"a", "an", "and", "as", "at", "but", "by", "for", "from", "in", "into", "nor", "of", "on", "or",
                 "per", "the", "to", "vs.", "vs", "via", "with"}
 
@@ -346,8 +343,8 @@ def source_text(source: str | list[str], updated: dt.date | None | list[dt.date 
 
 def source_footer(source: str | list[str], indent: int = 0, note: str | None = None,
                   margin_top: str = "-0.75rem", updated: dt.date | None | list[dt.date | None] = None):
-    """The data-source line under a chart, then an optional `note` line, both 11px black, as
-    the Urban style guide sets them ("Source: ..." first, "Note: ..." after it). updated: the
+    """The data-source line under a chart, then an optional `note` line, both 11px black
+    ("Source: ..." first, "Note: ..." after it). updated: the
     source's release date (or a list, one per source), shown as "Last updated" (source_text).
     indent is a left padding in px; a negative margin_top pulls it up towards the chart."""
     note_html = f"<br>Note: {html.escape(note)}" if note else ""
@@ -430,7 +427,7 @@ TREND_MARGIN_TOP = 86
 SECTION_GAP_PX = 16  # extra space above each Trends section header (1rem)
 SECTION_HEADER_GAP_BELOW_PX = 4  # and below it, before its notes and charts (0.25rem)
 FORECAST_BAR_ALPHA = 0.5  # forecast-year bars at half strength (observed ones solid)
-# Chart and map subtitles: a gray from Urban's gray ramp, the lightest that still passes WCAG AA
+# Chart and map subtitles: the lightest gray that still passes WCAG AA
 # contrast on white (5.5:1) -- the next step, #9d9d9d, is only 2.7:1.
 SUBTITLE_COLOR = "#696969"
 # Left indent (px) for each chart's title, unit line, legend and footer. (The y-axis tick labels
@@ -574,7 +571,7 @@ def trend_stacked_bar(
     Stacked bars, one per year (first series at the bottom). barmode "relative" stacks
     positive values above zero and negative ones below. Solid fill for observed years,
     FORECAST_BAR_ALPHA for forecast years (>= forecast_x, see trend_chart). Bars
-    are about twice as wide as the gaps between them (Urban style). hover_only series (e.g. a total)
+    are about twice as wide as the gaps between them. hover_only series (e.g. a total)
     appear in the tooltip without being drawn.
     Only years where every series has a value are drawn: a gap would otherwise stack as 0
     (e.g. birth/death rates are forecast only every 5 years, net migration yearly).
@@ -607,7 +604,7 @@ def trend_stacked_bar(
 
 def trend_title(name: str, unit: str, subtitle_px: int = TREND_SUBTITLE_PX) -> str:
     """Chart title in bold headline case, then the unit as an italic sentence-case subtitle in
-    SUBTITLE_COLOR (Urban style guide)."""
+    SUBTITLE_COLOR."""
     return (f"<b>{headline_case(name)}</b><br>"
             f'<span style="font-size:{subtitle_px}px;color:{SUBTITLE_COLOR}"><i>{sentence_case(unit)}</i></span>')
 
@@ -686,7 +683,7 @@ def trend_spec(chart_fn, lines: dict[str, pd.Series], colors: dict[str, str], ti
 
 def place_title_and_legend(fig: go.Figure, height: int, margin_top: int, title_px: int, top_px: int = 14):
     """Title (with its subtitle line) left-aligned top_px below the chart's top edge. The legend
-    (set up in style_fig) sits in a row under it, just above the plot (Urban style guide: legends
+    (set up in style_fig) sits in a row under it, just above the plot (legends
     go between the title/subtitle and the chart). margin_top reserves room for all three."""
     fig.update_layout(title_yref="container", title_y=1 - top_px / height, title_yanchor="top",
                       title_xref="container", title_x=0, title_xanchor="left", title_pad_l=TREND_TEXT_INDENT,
@@ -1418,7 +1415,7 @@ def distribution_counts(values: pd.DataFrame, bins: tuple) -> pd.DataFrame:
 
 DIST_BAR_OPACITY = 0.6  # the two years' bars overlap, so both stay see-through
 DIST_CHART_HEIGHT = 470
-DIST_MARGIN_TOP = 110  # 20px title, 16px italic gray subtitle, 14px legend row (Urban web sizes)
+DIST_MARGIN_TOP = 110  # 20px title, 16px italic gray subtitle, 14px legend row
 FULL_WIDTH_TITLE_TOP = 24  # px from the top to a 20px title (Plotly clips it at 14)
 
 
@@ -1488,11 +1485,11 @@ def distribution_bars(dist: pd.DataFrame, bins: tuple, label: str, year_a: int, 
     """
     Two overlaid bar sets; the tooltip is headed by the bin as an interval (e.g. "[2.1, 2.2)",
     see bin_intervals), then one row per year. Title, "Number of countries" subtitle and the
-    two years' legend laid out like the Trends charts (place_title_and_legend), at the Urban
-    style guide's full-width sizes. A solid zero line where zero_line_x() finds one. The unit
+    two years' legend laid out like the Trends charts (place_title_and_legend), at full-width
+    sizes. A solid zero line where zero_line_x() finds one. The unit
     is the x-axis title, so tick labels carry no suffix (x_suffix is for the tooltip only).
     Equal-width bins are a histogram of a continuous value, so they almost touch; fixed-edge
-    bins are categories, with bars about twice as wide as the gaps (Urban style).
+    bins are categories, with bars about twice as wide as the gaps.
 
     The x-axis is always categorical, with each bin's interval as its category: that's what
     heads a unified tooltip with text (the header is otherwise the x value, i.e. a bar's center).
@@ -1714,7 +1711,7 @@ def _even_scale(colors: list[str]) -> list[list]:
     return [[i / (len(colors) - 1), c] for i, c in enumerate(colors)]
 
 
-# Choropleths use the OHA Denims sequential ramp; values on both sides of 0 the
+# Choropleths use the Denims sequential ramp; values on both sides of 0 the
 # diverging palette (gold negative, blue positive).
 BLUE_SCALE, DIVERGING_SCALE = _even_scale(du.SEQUENTIAL_RAMP), _even_scale(du.DIVERGING)
 MAP_HEIGHT, MAP_MARGIN_TOP = 510, 90
@@ -1779,7 +1776,7 @@ def _style_map(fig: go.Figure, title: str, subtitle: str) -> go.Figure:
     """Bold headline-case title and italic gray subtitle (the unit), left-aligned as on the charts.
     Countries without data stay light gray."""
     fig.update_geos(projection_type="natural earth", showcountries=True, countrycolor="white",
-                    showland=True, landcolor=du.WHISPER, showocean=False,  # OHA "shaded area" gray
+                    showland=True, landcolor=du.WHISPER, showocean=False,  # the palette's lightest gray
                     showframe=False, coastlinecolor="white", lataxis_range=[-58, 85])  # crop Antarctica
     fig.update_layout(
         title=dict(text=trend_title(title, subtitle, subtitle_px=16), font=dict(family=FONT, size=20, color="black"),
@@ -2195,7 +2192,7 @@ def load_source_updates() -> dict[str, dt.date | None]:
 
 
 def main():
-    # Section headers (st.subheader, the app's only <h3>) in the OHA "caption" gray, Suva Grey.
+    # Section headers (st.subheader, the app's only <h3>) in the caption gray, Suva Grey.
     # Streamlit's own text colors (":gray[...]") aren't palette colors, hence the CSS.
     st.markdown(f"<style>h3 {{ color: {du.SUVA_GREY} !important; }}</style>", unsafe_allow_html=True)
     st.title(APP_NAME)

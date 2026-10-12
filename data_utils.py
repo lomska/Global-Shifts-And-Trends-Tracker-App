@@ -100,30 +100,26 @@ INCOME_CODES: dict[str, str] = {
     "LIC": "Low income",
 }
 
-# Colors: the OHA palette (USAID Office of HIV/AIDS data visualization guide, built on the
-# USAID colors), used the way the Urban Institute style guide uses its own colors (chart style
-# follows Urban too, see app.style_fig): OHA Denim and Golden Sand take the roles of Urban's
-# cyan and yellow, OHA grays those of Urban's grays.
+# Colors: Denim and Golden Sand are the two primary colors (first and second series), with a set
+# of grays for gridlines, captions and text; chart style: app.style_fig.
 DENIM, SCOOTER, OLD_ROSE, GOLDEN_SAND = "#2057a7", "#1e87a5", "#c43d4d", "#f2bc40"
 MOODY_BLUE, GENOA, BURNT_SIENNA, TROLLEY_GREY = "#8980cb", "#287c6f", "#e07653", "#808080"
 BLACK = "#000000"
-# OHA grays, light to dark: "shaded area", "light grid", "caption", "subtitle/body", "title".
+# Grays, light to dark: "shaded area", "light grid", "caption", "subtitle/body", "title".
 WHISPER, LIGHT_GREY, SUVA_GREY, MATTERHORN, NERO = "#ebebeb", "#d3d3d3", "#909090", "#505050", "#202020"
-# Categorical series follow Urban's order (cyan, yellow, black, gray, magenta, green, space gray,
-# orange) in OHA colors.
+# Categorical series, in order: blue, yellow, black, gray, red, green, dark gray, orange.
 CATEGORICAL_COLORS = [DENIM, GOLDEN_SAND, NERO, LIGHT_GREY, OLD_ROSE, GENOA, MATTERHORN, BURNT_SIENNA]
-# Maps: the OHA "Denims" sequential ramp (light to dark), and a diverging palette from the
-# "Golden Sands" (negative, dark to light) through a neutral near-white at 0 into the Denims
-# (positive, light to dark) -- Urban's yellow-to-blue diverging palette in OHA colors. The
-# neutral midpoint keeps values near 0 from blending into a muddy gray.
+# Maps: a "Denims" sequential ramp (light to dark), and a yellow-to-blue diverging palette from
+# the "Golden Sands" (negative, dark to light) through a neutral near-white at 0 into the Denims
+# (positive, light to dark). The neutral midpoint keeps values near 0 from blending into a muddy gray.
 SEQUENTIAL_RAMP = ["#bfddff", "#a7c4fd", "#8aadfe", "#7397ef", "#5784d4", "#456ebe", "#215dad", "#064896",
                    "#02397d", "#032461"]
 DIVERGING = ["#735000", "#a27601", "#d29f1f", "#fbcf4f", "#ffeb6e", "#f5f5f5",
              "#bfddff", "#8aadfe", "#5784d4", "#215dad", "#02397d"]
 GRID_COLOR = LIGHT_GREY  # horizontal gridlines only
 
-# Distributions table region labels: four OHA colors other than the two primary ones (Denim,
-# Golden Sand), then three OHA grays. Region order is the World Bank's (alphabetical), so each
+# Distributions table region labels: four palette colors other than the two primary ones (Denim,
+# Golden Sand), then three grays. Region order is the World Bank's (alphabetical), so each
 # region keeps its color.
 REGION_COLORS = [SCOOTER, MOODY_BLUE, GENOA, OLD_ROSE, LIGHT_GREY, SUVA_GREY, MATTERHORN]
 REGION_COLOR_MAP: dict[str, str] = dict(zip(REGION_CODES.values(), REGION_COLORS))
