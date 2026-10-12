@@ -1,6 +1,6 @@
 # Global Shifts Tracker
 
-**Live app: [global-shifts-and-trends-tracker-app.streamlit.app](https://global-shifts-and-trends-tracker-app.streamlit.app/)**
+**Live app: [global-shifts-tracker.streamlit.app](https://global-shifts-tracker.streamlit.app/)**
 
 This app gathers a curated set of publicly available indicators, from fiscal figures to
 self-reported happiness, to show how the world and its countries have changed over recent decades.
@@ -36,20 +36,67 @@ No chart shades the forecast period.
 
 ## Indicators tracked
 
-| Group | Indicators | Data Sources |
-|---|---|---|
-| Economics | <ul><li>Real GDP growth</li><li>Consumer prices</li><li>Unemployment rate</li><li>Government revenue and expenditure</li><li>Government budget balance</li><li>General government gross debt</li><li>Current account balance</li><li>Foreign direct investment, net inflows</li><li>Domestic credit to private sector</li><li>Price level relative to the US</li><li>Net energy imports</li><li>GDP, PPP</li><li>Output by sector</li><li>Employment by sector</li></ul> | <ul><li>IMF, World Economic Outlook</li><li>World Bank, World Development Indicators</li></ul> |
-| Labour market | <ul><li>Labour force participation rate</li><li>Youth not in employment, education or training</li><li>Labour income share</li></ul> | <ul><li>World Bank, World Development Indicators</li><li>International Labour Organization, ILOSTAT</li></ul> |
-| Industry & innovation | <ul><li>Manufacturing contribution to GDP</li><li>Medium and high-tech manufacturing</li><li>Manufactured exports</li><li>Economic Complexity Index</li><li>Research and development expenditure</li></ul> | <ul><li>World Bank, World Development Indicators</li><li>Harvard Growth Lab, Atlas of Economic Complexity</li></ul> |
-| Living standards | <ul><li>GDP per capita, PPP</li><li>GNI per capita, PPP</li><li>Median income or consumption</li><li>Income inequality (Gini index)</li><li>Poverty at $3.00 a day</li><li>Happiness: life evaluation</li></ul> | <ul><li>World Bank, World Development Indicators</li><li>World Bank, Poverty and Inequality Platform</li><li>Standardized World Income Inequality Database</li><li>World Happiness Report</li></ul> |
-| Demographics | <ul><li>Total population</li><li>Annual population growth rate</li><li>Birth and death rates</li><li>Total fertility rate</li><li>Under-5 mortality rate</li><li>Age group shares</li><li>Age dependency ratio</li><li>Life expectancy at birth</li><li>Natural population growth and net migration</li></ul> | <ul><li>World Bank, Population estimates and projections</li></ul> |
-| Climate | <ul><li>Greenhouse gas emissions per capita</li><li>Total greenhouse gas emissions</li><li>Energy intensity</li><li>Renewable energy share</li><li>Forest area</li><li>ND-GAIN country index</li><li>Vulnerability and readiness to climate change</li></ul> | <ul><li>World Bank, World Development Indicators</li><li>EDGAR (European Commission JRC) and IEA, via the World Bank</li><li>University of Notre Dame, ND-GAIN Country Index</li></ul> |
-| Infrastructure & basic services | <ul><li>Basic drinking water, sanitation and hygiene</li><li>Access to electricity and clean cooking</li><li>Internet users</li></ul> | <ul><li>World Bank, World Development Indicators</li></ul> |
-| Education | <ul><li>Government expenditure on education</li><li>Mean and expected years of schooling</li><li>Tertiary school enrollment</li></ul> | <ul><li>World Bank, World Development Indicators</li><li>UNDP, Human Development Report</li></ul> |
-| Healthcare | <ul><li>Current health expenditure</li><li>Out-of-pocket health spending</li></ul> | <ul><li>World Bank, World Development Indicators</li></ul> |
+<table>
+<tr><th>Group</th><th>Indicator</th></tr>
+<tr><td rowspan="14"><b>Economics</b></td><td><small>Real GDP growth</small></td></tr>
+<tr><td><small>Consumer prices</small></td></tr>
+<tr><td><small>Unemployment rate</small></td></tr>
+<tr><td><small>Government revenue and expenditure</small></td></tr>
+<tr><td><small>Government budget balance</small></td></tr>
+<tr><td><small>General government gross debt</small></td></tr>
+<tr><td><small>Current account balance</small></td></tr>
+<tr><td><small>Foreign direct investment, net inflows</small></td></tr>
+<tr><td><small>Domestic credit to private sector</small></td></tr>
+<tr><td><small>Price level relative to the US</small></td></tr>
+<tr><td><small>Net energy imports</small></td></tr>
+<tr><td><small>GDP, PPP</small></td></tr>
+<tr><td><small>Output by sector</small></td></tr>
+<tr><td><small>Employment by sector</small></td></tr>
+<tr><td rowspan="3"><b>Labour market</b></td><td><small>Labour force participation rate</small></td></tr>
+<tr><td><small>Youth not in employment, education or training</small></td></tr>
+<tr><td><small>Labour income share</small></td></tr>
+<tr><td rowspan="5"><b>Industry &amp; innovation</b></td><td><small>Manufacturing contribution to GDP</small></td></tr>
+<tr><td><small>Medium and high-tech manufacturing</small></td></tr>
+<tr><td><small>Manufactured exports</small></td></tr>
+<tr><td><small>Economic Complexity Index</small></td></tr>
+<tr><td><small>Research and development expenditure</small></td></tr>
+<tr><td rowspan="6"><b>Living standards</b></td><td><small>GDP per capita, PPP</small></td></tr>
+<tr><td><small>GNI per capita, PPP</small></td></tr>
+<tr><td><small>Median income or consumption</small></td></tr>
+<tr><td><small>Income inequality (Gini index)</small></td></tr>
+<tr><td><small>Poverty at $3.00 a day</small></td></tr>
+<tr><td><small>Happiness: life evaluation</small></td></tr>
+<tr><td rowspan="9"><b>Demographics</b></td><td><small>Total population</small></td></tr>
+<tr><td><small>Annual population growth rate</small></td></tr>
+<tr><td><small>Birth and death rates</small></td></tr>
+<tr><td><small>Total fertility rate</small></td></tr>
+<tr><td><small>Under-5 mortality rate</small></td></tr>
+<tr><td><small>Age group shares</small></td></tr>
+<tr><td><small>Age dependency ratio</small></td></tr>
+<tr><td><small>Life expectancy at birth</small></td></tr>
+<tr><td><small>Natural population growth and net migration</small></td></tr>
+<tr><td rowspan="7"><b>Climate</b></td><td><small>Greenhouse gas emissions per capita</small></td></tr>
+<tr><td><small>Total greenhouse gas emissions</small></td></tr>
+<tr><td><small>Energy intensity</small></td></tr>
+<tr><td><small>Renewable energy share</small></td></tr>
+<tr><td><small>Forest area</small></td></tr>
+<tr><td><small>ND-GAIN country index</small></td></tr>
+<tr><td><small>Vulnerability and readiness to climate change</small></td></tr>
+<tr><td rowspan="3"><b>Infrastructure &amp; basic services</b></td><td><small>Basic drinking water, sanitation and hygiene</small></td></tr>
+<tr><td><small>Access to electricity and clean cooking</small></td></tr>
+<tr><td><small>Internet users</small></td></tr>
+<tr><td rowspan="3"><b>Education</b></td><td><small>Government expenditure on education</small></td></tr>
+<tr><td><small>Mean and expected years of schooling</small></td></tr>
+<tr><td><small>Tertiary school enrollment</small></td></tr>
+<tr><td rowspan="2"><b>Healthcare</b></td><td><small>Current health expenditure</small></td></tr>
+<tr><td><small>Out-of-pocket health spending</small></td></tr>
+</table>
+
+Data come from the IMF, the World Bank, the ILO, the Harvard Growth Lab, the UNDP, the World Happiness
+Report, ND-GAIN, EDGAR and the Standardized World Income Inequality Database. See
+[DATA_SOURCES.md](DATA_SOURCES.md) for the full list of sources, their terms and the credits they ask for.
 
 ## Licence
 
 The code is licensed under the [PolyForm Noncommercial License 1.0.0](LICENSE). The licence covers the
-code only: the data shown in the app belongs to its publishers and is subject to their terms, listed with
-the credits they ask for in [DATA_SOURCES.md](DATA_SOURCES.md).
+code only, not the data shown in the app.
