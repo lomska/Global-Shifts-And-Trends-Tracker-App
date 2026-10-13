@@ -2192,9 +2192,10 @@ def main():
     st.title(APP_NAME)
     st.caption(
         "This app gathers a curated set of publicly available indicators, from fiscal figures to self-reported "
-        "happiness, to show how the world and its countries have changed over recent decades. Pick an indicator "
-        "and define a period, and see how countries redistributed across the range, where they sit on the map, "
-        "and who climbed or fell in the global ranking."
+        "happiness, so you can quickly explore how the world has changed over recent decades. Pick an indicator "
+        "and a period to see how countries redistributed across the range, how values vary across the map, "
+        "and who climbed or fell in the global ranking. You can also open any country's profile to trace its "
+        "full history across all available indicators."
     )
 
     countries, country_errors = load_countries()
@@ -2203,17 +2204,20 @@ def main():
         st.header("About")
         # Every source is credited in the "Data sources and licences" dialog and under each chart.
         st.caption(
-            "This app gathers a curated set of publicly available indicators, from fiscal figures to "
-            "self-reported happiness, to show how the world and its countries have changed over recent decades."
+            "The app treats each country as a data point and each year as a time step. Watching how countries "
+            "spread out along an indicator, and how that spread changes over time, brings significant shifts into "
+            "view at a glance. It's a tool for quick diagnostics, at the global or the country level. What lies "
+            "behind each shift is yours to explore further."
         )
         st.caption(
-            "**Country Profiles** follows a single country through time: its economy, its government, and its "
-            "people's opportunities and limits. **Period & Country Comparisons** takes a single indicator and "
-            "shows how it shifted between years, how it varies from country to country, and where each country ranks."
+            "**Period & Country Comparisons** is the main tab. See how things stood decades ago and how they stand "
+            "now, and how countries and regions have shifted in the world. You can see where they improved or fell "
+            "behind on key measures of the economy and society, both in absolute terms and relative to other "
+            "countries."
         )
         st.caption(
-            "Either way, there is something to discover: a dramatic global shift, or a profound change in one "
-            "country's fortunes, for better or worse."
+            "**Country Profiles** puts a country's current state and all its available history on one page. The "
+            "indicators cover enough ground to give a well-rounded picture of its economic and social state."
         )
         if st.button("Data sources and licences"):
             show_data_sources()

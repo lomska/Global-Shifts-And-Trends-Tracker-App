@@ -2,22 +2,28 @@
 
 **Live app: [global-shifts-tracker.streamlit.app](https://global-shifts-tracker.streamlit.app/)**
 
-This app gathers a curated set of publicly available indicators, from fiscal figures to
-self-reported happiness, to show how the world and its countries have changed over recent decades.
+This Streamlit app gathers a curated set of publicly available indicators, from fiscal figures to self-reported
+happiness, so you can quickly explore how the world has changed over recent decades. Pick an indicator
+and a period to see how countries redistributed across the range, how values vary across the map, and
+who climbed or fell in the global ranking. You can also open any country's profile to trace its full
+history across all available indicators.
 
 <img src="images/overview.png" alt="Period & Country Comparisons tab: histogram of countries by birth rate (1960 vs. 2024), world map of the Economic Complexity Index, Country Details table, box plot per year of internet users (1990-2025), and three Country Profiles charts">
 
-The app has two tabs:
+## About
 
-- **Period & Country Comparisons** (the landing tab) is the cross-country view of one indicator.
-  Pick an indicator group, one of its indicators (67 in all) and two years. The tab draws a histogram
-  of countries across value bins for both years, a world map switchable between either year and the
-  change between them, a sortable table of every country with both values and the change, and a box
-  plot per year over the indicator's whole period.
-- **Country Profiles** is the time-series view of one entity: the World, a World Bank region or income
-  group, or any of 217 countries. It draws 52 charts in nine sections, three per row, with reference
-  lines for widely used targets (such as replacement-level fertility) and each source's latest release
-  date under every chart.
+The app treats each country as a data point and each year as a time step. Watching how countries spread
+out along an indicator, and how that spread changes over time, brings significant shifts into view at a
+glance. It's a tool for quick diagnostics, at the global or the country level. What lies behind each
+shift is yours to explore further.
+
+**Period & Country Comparisons** is the main tab. See how things stood decades ago and how they stand
+now, and how countries and regions have shifted in the world. You can see where they improved or fell
+behind on key measures of the economy and society, both in absolute terms and relative to other
+countries.
+
+**Country Profiles** puts a country's current state and all its available history on one page. The
+indicators cover enough ground to give a well-rounded picture of its economic and social state.
 
 The app needs no local data files -- it pulls the data live from the publishers'
 APIs each time the cache expires (once a day), so the numbers stay current. The
