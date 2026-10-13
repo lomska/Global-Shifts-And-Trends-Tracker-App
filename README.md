@@ -26,10 +26,7 @@ countries.
 indicators cover enough ground to give a well-rounded picture of its economic and social state.
 
 The app needs no local data files -- it pulls the data live from the publishers'
-APIs each time the cache expires (once a day), so the numbers stay current. The
-Country Profiles line charts draw each series solid over observed years and dotted
-over forecast years (stacked bar charts draw forecast years at half strength).
-No chart shades the forecast period.
+APIs each time the cache expires (once a day), so the numbers stay current. 
 
 ## Indicators tracked
 
