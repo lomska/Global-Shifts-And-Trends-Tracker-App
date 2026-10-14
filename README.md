@@ -47,9 +47,9 @@ daily, so the numbers stay current.
 <tr><td><small>GDP, PPP</small></td></tr>
 <tr><td><small>Output by sector</small></td></tr>
 <tr><td><small>Employment by sector</small></td></tr>
-<tr><td rowspan="3"><b>Labor market</b></td><td><small>Labor force participation rate</small></td></tr>
+<tr><td rowspan="3"><b>Labour market</b></td><td><small>Labour force participation rate</small></td></tr>
 <tr><td><small>Youth not in employment, education or training</small></td></tr>
-<tr><td><small>Labor income share</small></td></tr>
+<tr><td><small>Labour income share</small></td></tr>
 <tr><td rowspan="5"><b>Industry &amp; innovation</b></td><td><small>Manufacturing contribution to GDP</small></td></tr>
 <tr><td><small>Medium and high-tech manufacturing</small></td></tr>
 <tr><td><small>Manufactured exports</small></td></tr>
@@ -98,7 +98,7 @@ pip install -r requirements.txt
 streamlit run app.py
 ```
 
-## License
+## Licence
 
-The code is licensed under the [PolyForm Noncommercial License 1.0.0](LICENSE). The license covers the
+The code is licensed under the [PolyForm Noncommercial License 1.0.0](LICENSE). The licence covers the
 code only, not the data shown in the app.
