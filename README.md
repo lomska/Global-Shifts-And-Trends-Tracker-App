@@ -22,9 +22,9 @@ Or compare the economic complexity of countries (a measure of how diverse and so
 ![Economic Complexity Index map, 2024, with country details table](images/map_and_table.png)
 
 **Country Profiles** puts a country's current state and all its available history on one page. The
-indicators cover enough ground to give a well-rounded picture of its economy, society and environment:
+indicators cover enough ground to give a well-rounded picture of its economy, society and environment. Here, for example, are some of Germany's demographic and climate trends:
 
-![Country profile: demographic and climate charts](images/trends_and_climate.png)
+![Country profile for Germany: demographic and climate charts](images/trends_and_climate.png)
 
 The app needs no local data files—it fetches data directly from the publishers' APIs and refreshes it
 daily, so the numbers stay current.
