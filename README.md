@@ -3,30 +3,31 @@
 **Live app: [global-shifts-tracker.streamlit.app](https://global-shifts-tracker.streamlit.app/)**
 
 This Streamlit app gathers a curated set of publicly available indicators, from fiscal figures to self-reported
-happiness, so you can quickly explore how the world has changed over recent decades. Pick an indicator
-and a period to see how countries redistributed across the range, how values vary across the map, and
-who climbed or fell in the global ranking. You can also open any country's profile to trace its full
-history across all available indicators.
-
-<img src="images/overview.png" alt="Period & Country Comparisons tab: histogram of countries by birth rate (1960 vs. 2024), world map of the Economic Complexity Index, Country Details table, box plot per year of internet users (1990-2025), and three Country Profiles charts">
-
-## About
-
-The app treats each country as a data point and each year as a time step. Watching how countries spread
+happiness, so you can quickly explore how the world has changed over recent decades. Each country is treated as a data point, and each year as a time step. Watching how countries spread
 out along an indicator, and how that spread changes over time, brings significant shifts into view at a
-glance. It's a tool for quick diagnostics, at the global or the country level. What lies behind each
-shift is yours to explore further.
+glance.
 
-**Period & Country Comparisons** is the main tab. See how things stood decades ago and how they stand
-now, and how countries and regions have shifted in the world. You can see where they improved or fell
-behind on key measures of the economy and society, both in absolute terms and relative to other
-countries.
+## Features
+
+**Period & Country Comparisons** is the main tab. Pick an indicator and a period to compare where countries stood then and where they stand now. For example, you can see how the birth rate has fallen so dramatically that levels once considered the norm are now found almost nowhere in the world:
+
+![Distribution of countries by birth rate, 1960 vs. 2024](images/birth_rate_distribution.png)
+
+Or trace, year by year, how the Internet went from a luxury to an everyday necessity across the globe:
+
+![Distribution of countries by share of Internet users, 1990–2025](images/internet_users_distribution.png)
+
+Or compare the economic complexity of countries (a measure of how diverse and sophisticated their exports are) 30 years ago and today, and see which countries moved up and which fell behind:
+
+![Economic Complexity Index map, 2024, with country details table](images/map_and_table.png)
 
 **Country Profiles** puts a country's current state and all its available history on one page. The
-indicators cover enough ground to give a well-rounded picture of its economic and social state.
+indicators cover enough ground to give a well-rounded picture of its economy, society and environment:
 
-The app needs no local data files -- it pulls the data live from the publishers'
-APIs each time the cache expires (once a day), so the numbers stay current. 
+![Country profile: demographic and climate charts](images/trends_and_climate.png)
+
+The app needs no local data files—it fetches data directly from the publishers' APIs and refreshes it
+daily, so the numbers stay current.
 
 ## Indicators tracked
 
@@ -46,9 +47,9 @@ APIs each time the cache expires (once a day), so the numbers stay current.
 <tr><td><small>GDP, PPP</small></td></tr>
 <tr><td><small>Output by sector</small></td></tr>
 <tr><td><small>Employment by sector</small></td></tr>
-<tr><td rowspan="3"><b>Labour market</b></td><td><small>Labour force participation rate</small></td></tr>
+<tr><td rowspan="3"><b>Labor market</b></td><td><small>Labor force participation rate</small></td></tr>
 <tr><td><small>Youth not in employment, education or training</small></td></tr>
-<tr><td><small>Labour income share</small></td></tr>
+<tr><td><small>Labor income share</small></td></tr>
 <tr><td rowspan="5"><b>Industry &amp; innovation</b></td><td><small>Manufacturing contribution to GDP</small></td></tr>
 <tr><td><small>Medium and high-tech manufacturing</small></td></tr>
 <tr><td><small>Manufactured exports</small></td></tr>
@@ -90,7 +91,14 @@ Data come from the IMF, the World Bank, the ILO, the Harvard Growth Lab, the UND
 Report, ND-GAIN, EDGAR and the Standardized World Income Inequality Database. See
 [DATA_SOURCES.md](DATA_SOURCES.md) for the full list of sources, their terms and the credits they ask for.
 
-## Licence
+## Run locally
 
-The code is licensed under the [PolyForm Noncommercial License 1.0.0](LICENSE). The licence covers the
+```bash
+pip install -r requirements.txt
+streamlit run app.py
+```
+
+## License
+
+The code is licensed under the [PolyForm Noncommercial License 1.0.0](LICENSE). The license covers the
 code only, not the data shown in the app.
