@@ -1,6 +1,6 @@
-# Global Shifts Tracker
+# Global Shifts Explorer
 
-**Live app: [global-shifts-tracker.streamlit.app](https://global-shifts-tracker.streamlit.app/)**
+**Live app: [global-shifts-explorer.streamlit.app](https://global-shifts-explorer.streamlit.app/)**
 
 This Streamlit app gathers a curated set of publicly available indicators, from fiscal figures to self-reported
 happiness, so you can quickly explore how the world has changed over recent decades. Each country is treated as a data point, and each year as a time step. Watching how countries spread

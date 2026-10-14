@@ -1,5 +1,5 @@
 """
-Global Shifts Tracker -- an interactive Streamlit app in two tabs: Trends
+Global Shifts Explorer -- an interactive Streamlit app in two tabs: Trends
 (every indicator over time for one country, region or income group, in sections from
 Economics to Healthcare) and Distributions (one indicator across all countries, two
 years compared).
@@ -35,7 +35,7 @@ import sources as ds
 # Page config
 # --------------------------------------------------------------------------
 
-APP_NAME = "Global Shifts Tracker"  # browser tab and page heading
+APP_NAME = "Global Shifts Explorer"  # browser tab and page heading
 
 st.set_page_config(
     page_title=APP_NAME,

@@ -711,7 +711,7 @@ def run():
         # Distributions opens on Economics / Real GDP growth (the first DEFAULT_DIST_VIEWS entry).
         assert at.segmented_control(key="dist_section").value == "Economics"
         assert at.selectbox(key="dist_indicator_Economics").value == "Real GDP growth"
-        assert app_mod.APP_NAME == "Global Shifts Tracker", app_mod.APP_NAME
+        assert app_mod.APP_NAME == "Global Shifts Explorer", app_mod.APP_NAME
 
         # The sidebar's "Data sources and licences" dialog shows DATA_SOURCES.md, its link to LICENSE
         # pointed at the licence's page (a relative link goes nowhere in the app).
