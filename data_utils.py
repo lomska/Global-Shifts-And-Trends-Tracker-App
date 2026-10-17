@@ -16,7 +16,10 @@ Two layers of caching sit in front of the network:
 Both layers share the same TTL, and both are best-effort: if the filesystem
 turns out to be read-only or ephemeral on a given host, the disk layer just
 quietly never hits, and the app fetches over the network (in parallel) every
-time the in-memory cache is cold.
+time the in-memory cache is cold. The TTL only decides when to try the network again: when a
+source can't be fetched, its file is used whatever its age (load_data, stale_sources), so an
+outage shows the last saved data instead of empty charts. "Refresh data" therefore expires the
+files (expire_disk_cache) rather than deleting them.
 
 A third, separate kind of caching applies to the pandas transform functions
 below (trends_data, country_indicator_wide, projection_starts): st.tabs isn't lazy, so a full
@@ -66,6 +69,9 @@ _SESSION = requests.Session()
 _CACHE_DIR = Path(os.environ.get("WB_DATA_CACHE_DIR") or Path(__file__).resolve().parent / ".wb_data_cache")
 _COUNTRIES_CACHE_FILE = _CACHE_DIR / "countries.parquet"
 _UPDATES_CACHE_FILE = _CACHE_DIR / "source_updates.json"  # release dates, see source_updates()
+# Written by expire_disk_cache() ("Refresh data"): every cache file older than its own mtime counts as
+# expired, though it is still there as the fallback for a source that can't be fetched.
+_EXPIRED_MARKER = _CACHE_DIR / "expired_before"
 
 # Every series the app can chart (code -> name) and every source (key -> label), from sources.py.
 SERIES: dict[str, str] = ds.SERIES
@@ -178,6 +184,14 @@ class DataFetchError(RuntimeError):
 # On-disk cache helpers
 # --------------------------------------------------------------------------
 
+def _expired_before() -> float:
+    """When "Refresh data" was last clicked (the marker's mtime), or 0: files older than this are expired."""
+    try:
+        return _EXPIRED_MARKER.stat().st_mtime
+    except OSError:
+        return 0.0
+
+
 def _cache_age_seconds(*files: Path) -> float | None:
     """Age of the OLDEST of the given files in seconds, or None if any of them don't exist
     yet -- so a partially-written cache set never reads as fresher than it really is."""
@@ -190,6 +204,8 @@ def _read_parquet_if_fresh(*files: Path) -> list[pd.DataFrame] | None:
     """Read all of `files` as parquet if they exist and are within the TTL, else None."""
     age = _cache_age_seconds(*files)
     if age is None or age > CACHE_TTL_SECONDS:
+        return None
+    if min(f.stat().st_mtime for f in files) <= _expired_before():  # expired by "Refresh data"
         return None
     try:
         return [pd.read_parquet(f) for f in files]
@@ -213,12 +229,34 @@ def _write_parquet_atomic(file_df_pairs: list[tuple[Path, pd.DataFrame]]) -> Non
 
 
 def clear_disk_cache() -> None:
-    """Delete the whole on-disk cache (every source, the country list and the release dates). Called
-    by the app's "Refresh data" button so a forced refresh actually goes back to the network instead
-    of instantly re-reading yesterday's files."""
+    """Delete the whole on-disk cache (every source, the country list and the release dates), leaving no
+    fallback. The tests use it to start clean; the app's "Refresh data" uses expire_disk_cache()."""
     shutil.rmtree(_CACHE_DIR, ignore_errors=True)
     with _UPDATES_LOCK:
         _UPDATES.clear()
+        _STALE.clear()
+
+
+# Cache files from before the 2026-10-12 refactor: no longer read, so "Refresh data" deletes them.
+_LEGACY_CACHE_GLOBS = ("population_data.parquet", "extra_*.parquet")
+
+
+def expire_disk_cache() -> None:
+    """What the app's "Refresh data" button calls: every cache file is treated as expired, so each source
+    goes back to the network, but the files stay as the fallback for a source that can't be fetched (an
+    outage during a refresh then keeps the last saved data instead of emptying its charts)."""
+    try:
+        _CACHE_DIR.mkdir(parents=True, exist_ok=True)
+        _EXPIRED_MARKER.touch()
+        os.utime(_EXPIRED_MARKER)  # touch() leaves an existing file's mtime alone on some systems
+        for pattern in _LEGACY_CACHE_GLOBS:
+            for f in _CACHE_DIR.glob(pattern):
+                f.unlink(missing_ok=True)
+    except Exception:  # noqa: BLE001 -- a read-only filesystem: nothing on disk to expire
+        pass
+    with _UPDATES_LOCK:
+        _UPDATES.clear()
+        _STALE.clear()
 
 
 # --------------------------------------------------------------------------
@@ -231,7 +269,10 @@ def clear_disk_cache() -> None:
 # written before the dates existed is refetched once, like the completeness check below.
 
 _UPDATES: dict[str, dt.date | None] = {}
-_UPDATES_LOCK = threading.Lock()  # the sources are loaded on several threads
+_UPDATES_LOCK = threading.Lock()  # the sources are loaded on several threads (also guards _STALE)
+# Sources that couldn't be fetched and are shown from an older disk cache instead: {source key: (when that
+# copy was saved, the fetch error)}. Filled by load_data(); read through stale_sources().
+_STALE: dict[str, tuple[dt.datetime, str]] = {}
 
 
 def _read_updates_file() -> dict[str, dt.date | None]:
@@ -279,7 +320,7 @@ def fetch_countries() -> pd.DataFrame:
     url = f"{ds.WB_API_BASE}/country"
     params = {"format": "json", "per_page": 400}
     try:
-        resp = _SESSION.get(url, params=params, timeout=REQUEST_TIMEOUT)
+        resp = _SESSION.get(url, params=params, timeout=(ds.CONNECT_TIMEOUT, REQUEST_TIMEOUT))
         resp.raise_for_status()
         payload = resp.json()
     except Exception as exc:  # noqa: BLE001
@@ -402,6 +443,21 @@ def _read_source_cache(source: str) -> pd.DataFrame | None:
     return table
 
 
+def _read_stale_source(source: str) -> tuple[pd.DataFrame, dt.datetime] | None:
+    """A source's disk cache whatever its age (the fallback when it can't be fetched), with when it was
+    saved; None if missing or unreadable. Its release date, if on disk, goes in memory for source_updates()."""
+    f = _source_cache_file(source)
+    try:
+        table = pd.read_parquet(f)
+        saved = dt.datetime.fromtimestamp(f.stat().st_mtime)
+    except Exception:  # noqa: BLE001 -- missing or corrupt: no fallback
+        return None
+    if table.empty or not set(ds.SCHEMA) <= set(table.columns):
+        return None
+    _cached_update(source)
+    return table, saved
+
+
 def empty_data() -> pd.DataFrame:
     """load_data()'s table with no rows."""
     return pd.DataFrame(columns=ds.SCHEMA)
@@ -412,12 +468,15 @@ def load_data() -> tuple[pd.DataFrame, dict[str, str]]:
     """
     Every source as one long table (sources.SCHEMA), plus {source key: error message} for the sources
     that failed; never raises. A failure doesn't stop the app: the sources are separate publishers (some
-    block scripted downloads from time to time), so a failed one only leaves its own charts empty, with a
-    warning. Each source is cached on disk separately, so only failed or stale sources are refetched,
-    concurrently (I/O-bound requests, so threads help despite the GIL). A failure is cached in memory like
-    a success (24h, until "Refresh data"), so a publisher that is down isn't retried on every widget
-    interaction; it is never written to disk.
+    block scripted downloads from time to time). A source that can't be fetched is shown from its disk
+    cache whatever the age (listed by stale_sources(), not in errors); only one with no cache at all is
+    an error, leaving its own charts empty, with a warning. Each source is cached on disk separately, so
+    only failed or stale sources are refetched, concurrently (I/O-bound requests, so threads help despite
+    the GIL). A failure is cached in memory like a success (24h, until "Refresh data"), so a publisher
+    that is down isn't retried on every widget interaction; it is never written to disk.
     """
+    with _UPDATES_LOCK:
+        _STALE.clear()
     frames, errors, missing = [], {}, []
     for source in ds.SOURCES:
         cached = _read_source_cache(source)
@@ -432,7 +491,14 @@ def load_data() -> tuple[pd.DataFrame, dict[str, str]]:
                 try:
                     table, updated = future.result()
                 except Exception as exc:  # noqa: BLE001 -- reported in the app, per source
-                    errors[source] = f"{type(exc).__name__}: {exc}"
+                    message = f"{type(exc).__name__}: {exc}"
+                    stale = _read_stale_source(source)
+                    if stale is None:
+                        errors[source] = message
+                    else:
+                        frames.append(stale[0])
+                        with _UPDATES_LOCK:
+                            _STALE[source] = (stale[1], message)
                     continue
                 frames.append(table)
                 _write_parquet_atomic([(_source_cache_file(source), table)])
@@ -453,6 +519,18 @@ def source_updates() -> dict[str, dt.date | None]:
     on_disk = _read_updates_file()
     with _UPDATES_LOCK:
         return {key: _UPDATES.get(key, on_disk.get(key)) for key in ds.SOURCES}
+
+
+@st.cache_data(ttl=CACHE_TTL_SECONDS, show_spinner=False)
+def stale_sources() -> dict[str, tuple[dt.datetime, str]]:
+    """
+    {source key: (when its shown copy was saved, the fetch error)} for the sources that couldn't be fetched
+    and are shown from an older disk cache. Loads the data first (cached, so normally free), which fills
+    it. Cached like the data (24h, until "Refresh data").
+    """
+    load_data()
+    with _UPDATES_LOCK:
+        return dict(_STALE)
 
 
 # --------------------------------------------------------------------------

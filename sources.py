@@ -35,6 +35,7 @@ import datetime as dt
 import io
 import logging
 import re
+import threading
 import time
 import zipfile
 
@@ -241,15 +242,28 @@ def series_of(source: str) -> list[str]:
 
 RETRY_STATUSES = {500, 502, 503, 504}  # server-side errors worth a second try
 RETRY_WAIT = 2  # seconds before the second attempt, doubled before each later one
+# How long to wait for a connection, separately from the read timeout: a host that is down or unreachable
+# fails within seconds instead of after the full read timeout (180 s for most sources).
+CONNECT_TIMEOUT = 10
 
 
-def _get(session, url, *, accept: str | None = None, timeout: float = TIMEOUT, attempts: int = 1, **params):
+class SourceCancelled(RuntimeError):
+    """Raised by _get() when another request of the same source has already failed (see _fetch_all)."""
+
+
+def _get(session, url, *, accept: str | None = None, timeout: float = TIMEOUT, attempts: int = 1,
+         cancel: threading.Event | None = None, **params):
     """One GET. With attempts > 1, a request that times out or gets a server error (RETRY_STATUSES)
-    is tried again after a short wait; any other failure (unreachable host, 403, 404) is raised at once."""
+    is tried again after a short wait; any other failure (unreachable host, 403, 404) is raised at once.
+    timeout is the read timeout; connecting gets at most CONNECT_TIMEOUT. With `cancel` set (another
+    request of the same source failed), it stops before the next attempt, or mid-wait, with SourceCancelled."""
     headers = {**HEADERS, **({"Accept": accept} if accept else {})}
     for attempt in range(1, attempts + 1):
+        if cancel is not None and cancel.is_set():
+            raise SourceCancelled(f"{url}: skipped, another request of this source failed")
         try:
-            resp = session.get(url, params=params or None, headers=headers, timeout=timeout)
+            resp = session.get(url, params=params or None, headers=headers,
+                               timeout=(min(CONNECT_TIMEOUT, timeout), timeout))
             resp.raise_for_status()
             return resp
         except (requests.exceptions.Timeout, requests.exceptions.HTTPError) as exc:
@@ -258,7 +272,39 @@ def _get(session, url, *, accept: str | None = None, timeout: float = TIMEOUT, a
             if attempt == attempts or not retryable:
                 raise
             log.warning("%s failed (%s), attempt %d of %d; retrying", url, type(exc).__name__, attempt, attempts)
-            time.sleep(RETRY_WAIT * 2 ** (attempt - 1))
+            wait = RETRY_WAIT * 2 ** (attempt - 1)
+            if cancel is not None:
+                if cancel.wait(wait):  # woken early: another request failed
+                    raise SourceCancelled(f"{url}: skipped, another request of this source failed") from exc
+            else:
+                time.sleep(wait)
+
+
+def _fetch_all(fetch_one, items, max_workers: int) -> list:
+    """[fetch_one(item, cancel) for item in items], concurrently, all or nothing: one failed item fails the
+    source anyway, so the first failure sets `cancel` and the other items stop at their next request (or
+    retry wait) instead of running their own timeouts and retries. Raises the first real error (not a
+    SourceCancelled) -- so a source that is down fails in about the time of one failed request, not of
+    every series' worst case."""
+    cancel = threading.Event()
+
+    def run(item):
+        if cancel.is_set():
+            raise SourceCancelled("skipped, another request of this source failed")
+        try:
+            return fetch_one(item, cancel)
+        except SourceCancelled:
+            raise
+        except Exception:
+            cancel.set()
+            raise
+
+    with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as ex:
+        futures = [ex.submit(run, item) for item in items]
+    failures = [f.exception() for f in futures if f.exception() is not None]
+    if failures:
+        raise next((e for e in failures if not isinstance(e, SourceCancelled)), failures[0])
+    return [f.result() for f in futures]
 
 
 def _finish(long_df: pd.DataFrame) -> pd.DataFrame:
@@ -327,12 +373,12 @@ ESTIMATES_SERIES = "SP.POP.TOTL"
 LAST_ESTIMATE_URL = WB_API_BASE + "/country/WLD/indicator/" + ESTIMATES_SERIES
 
 
-def _pop_one(session, code: str) -> tuple[pd.DataFrame, dt.date | None]:
+def _pop_one(session, code: str, cancel: threading.Event | None = None) -> tuple[pd.DataFrame, dt.date | None]:
     """One series, every entity and year, plus the "lastupdated" date the API sends with it. Handles
     pagination, though one request with a large per_page normally returns everything."""
     rows, page, pages, updated = [], 1, 1, None
     while page <= pages:
-        payload = _get(session, POP_URL.format(code=code), timeout=POP_TIMEOUT,
+        payload = _get(session, POP_URL.format(code=code), timeout=POP_TIMEOUT, cancel=cancel,
                        format="json", per_page=32000, page=page).json()
         if not isinstance(payload, dict):
             raise ValueError(f"unexpected population response for {code}: {str(payload)[:200]}")
@@ -373,10 +419,11 @@ def last_estimate_year(session) -> int:
 
 def fetch_population(session) -> tuple[pd.DataFrame, dt.date | None]:
     """Every POP_SERIES series, fetched concurrently (one request each, I/O-bound), with is_projection for
-    the years after last_estimate_year(). One failed series fails the source."""
-    with concurrent.futures.ThreadPoolExecutor(max_workers=len(POP_SERIES) + 1) as ex:
+    the years after last_estimate_year(). One failed series fails the source, and stops the others (_fetch_all)."""
+    with concurrent.futures.ThreadPoolExecutor(max_workers=1) as ex:  # alongside the series
         last_estimate = ex.submit(last_estimate_year, session)
-        frames, dates = zip(*ex.map(lambda code: _pop_one(session, code), POP_SERIES))
+        frames, dates = zip(*_fetch_all(lambda code, cancel: _pop_one(session, code, cancel), POP_SERIES,
+                                        max_workers=len(POP_SERIES)))
         last = last_estimate.result()
     table = pd.concat(frames, ignore_index=True)
     table["year"] = pd.to_numeric(table["year"], errors="coerce")
@@ -390,17 +437,19 @@ def fetch_population(session) -> tuple[pd.DataFrame, dt.date | None]:
 WDI_URL = WB_API_BASE + "/country/all/indicator/{code}"
 # The World Bank API now and then leaves a request hanging, and one failed series fails the whole
 # source (seen on Streamlit Community Cloud, 2026-10-11: a 180 s read timeout). A series normally
-# answers within seconds, so: give up on a request after WDI_TIMEOUT and try it again.
+# answers within seconds, so: give up on a request after WDI_TIMEOUT and try it again. Once a series has
+# failed every attempt, the source has failed: _fetch_all stops the other series rather than let each run
+# its own retries (which made an outage cost several minutes before the app showed anything).
 WDI_TIMEOUT = 45
 WDI_ATTEMPTS = 3
 
 
-def _wdi_one(session, code: str) -> tuple[pd.DataFrame, dt.date | None]:
+def _wdi_one(session, code: str, cancel: threading.Event | None = None) -> tuple[pd.DataFrame, dt.date | None]:
     """One series, plus the "lastupdated" date the API sends with it (the WDI database's last update)."""
     rows, page, pages, updated = [], 1, 1, None
     while page <= pages:
         payload = _get(session, WDI_URL.format(code=code), timeout=WDI_TIMEOUT, attempts=WDI_ATTEMPTS,
-                       format="json", per_page=20000, page=page,
+                       cancel=cancel, format="json", per_page=20000, page=page,
                        date=f"{FIRST_YEAR}:{dt.date.today().year}").json()
         if not isinstance(payload, list) or len(payload) < 2:
             raise ValueError(f"unexpected WDI response for {code}: {str(payload)[:200]}")
@@ -415,8 +464,9 @@ def _wdi_one(session, code: str) -> tuple[pd.DataFrame, dt.date | None]:
 
 
 def fetch_wdi(session) -> tuple[pd.DataFrame, dt.date | None]:
-    with concurrent.futures.ThreadPoolExecutor(max_workers=8) as ex:  # ~30 series: don't hammer the API
-        frames, dates = zip(*ex.map(lambda code: _wdi_one(session, code), WDI_SERIES))
+    # ~30 series, 8 at a time (don't hammer the API); the first failure stops the rest (_fetch_all).
+    frames, dates = zip(*_fetch_all(lambda code, cancel: _wdi_one(session, code, cancel), WDI_SERIES,
+                                    max_workers=8))
     return _finish(pd.concat(frames, ignore_index=True)), _latest(dates)
 
 

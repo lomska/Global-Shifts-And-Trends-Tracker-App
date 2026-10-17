@@ -178,7 +178,7 @@ def wdi_slow_once_get(url, params=None, timeout=None, **kwargs):
     """Every WDI series times out on its first request, then answers."""
     if "/indicator/" in url and url not in timed_out:
         timed_out.append(url)
-        assert timeout == ds.WDI_TIMEOUT, timeout
+        assert timeout == (ds.CONNECT_TIMEOUT, ds.WDI_TIMEOUT), timeout
         raise requests.exceptions.ReadTimeout("simulated: read timed out")
     return fake_get(url, params=params, timeout=timeout, **kwargs)
 

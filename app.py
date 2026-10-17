@@ -394,6 +394,24 @@ def countries_warning(errors: dict[str, str], countries: pd.DataFrame):
         st.code(f"{COUNTRIES_NAME}: {errors[du.COUNTRIES_SOURCE]}")
 
 
+def stale_sources_notice():
+    """A note at the top of the page naming the sources that couldn't be fetched just now and are shown
+    from the copy saved earlier (du.stale_sources), with the details in an expander. Never raises."""
+    try:
+        stale = du.stale_sources()
+    except Exception:  # noqa: BLE001 -- only the note is lost
+        return
+    if not stale:
+        return
+    MONTHS = ("Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec")
+    saved = "; ".join(f"{source_name(key)} (saved {when.day} {MONTHS[when.month - 1]} {when.year})"
+                      for key, (when, _) in sorted(stale.items(), key=lambda kv: source_name(kv[0])))
+    st.info(f"Couldn't reach some data sources just now, so their charts show the copy saved earlier: {saved}. "
+            "Use **Refresh data** in the sidebar to try again.")
+    with st.expander("Error details"):
+        st.code("\n".join(f"{key}: {message}" for key, (_, message) in stale.items()))
+
+
 def stop_if_nothing_loaded(errors: dict[str, str], data: pd.DataFrame):
     """Stop the app, with an error, only when nothing can be shown: every source failed or returned no data."""
     if not data.empty:
@@ -2222,7 +2240,9 @@ def main():
         if st.button("Data sources and licences"):
             show_data_sources()
         if st.button("\U0001F504 Refresh data"):
-            du.clear_disk_cache()  # otherwise a forced refresh would just instantly re-read yesterday's file
+            # Expire, don't delete: each source goes back to the network, but keeps its saved copy as the
+            # fallback if it can't be fetched.
+            du.expire_disk_cache()
             st.cache_data.clear()
             st.rerun()
 
@@ -2230,6 +2250,7 @@ def main():
     errors = {**data_errors, **country_errors}
     stop_if_nothing_loaded(errors, data)
     countries_warning(errors, countries)
+    stale_sources_notice()
 
     # Distributions first, so the app opens on it. Each tab is an st.fragment:
     # a full run (page load, "Refresh data") still builds both, since st.tabs isn't lazy.
